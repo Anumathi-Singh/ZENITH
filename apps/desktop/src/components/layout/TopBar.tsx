@@ -4,9 +4,24 @@ export default function TopBar() {
 
       {/* Left */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-300 to-pink-300 flex items-center justify-center text-white text-lg font-bold">
-          🐇
-        </div>
+        <div
+ className="
+ w-10
+ h-10
+ rounded-2xl
+ bg-gradient-to-br
+ from-violet-300
+ to-pink-300
+ flex
+ items-center
+ justify-center
+ text-white
+ text-xl
+ shadow-md
+ "
+>
+ ✦
+</div>
 
         <div>
           <h1 className="font-semibold text-gray-800">Zenith</h1>
@@ -17,7 +32,7 @@ export default function TopBar() {
       </div>
 
       {/* Center */}
-      <div className="w-[420px]">
+      <div className="w-[350px]">
         <input
           type="text"
           placeholder="Search files, commands or ask Nova..."
