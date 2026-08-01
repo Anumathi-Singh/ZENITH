@@ -1,100 +1,86 @@
-import {
-  Home,
-  Folder,
-  Bot,
-  GitBranch,
-  Settings
-} from "lucide-react";
-
-
 const items = [
   {
-    icon: Home,
-    label: "Home"
+    icon: "⌂",
+    name: "Home"
   },
   {
-    icon: Folder,
-    label: "Explorer"
+    icon: "▢",
+    name: "Explorer"
   },
   {
-    icon: Bot,
-    label: "Nova"
+    icon: "✦",
+    name: "Nova"
   },
   {
-    icon: GitBranch,
-    label: "Git"
+    icon: "⑂",
+    name: "Git"
   },
+  {
+    icon: "⚙",
+    name: "Settings"
+  }
 ];
 
 
 export default function Sidebar() {
 
+
   return (
+
     <aside
       className="
+      h-full
       w-16
       rounded-3xl
-      bg-[#FFFEFF]
+      bg-white/70
+      backdrop-blur-xl
       border
       border-purple-100
       shadow-[0_10px_30px_rgba(120,90,180,0.08)]
       flex
       flex-col
       items-center
-      py-5
-      gap-5
+      py-4
+      gap-4
       "
     >
 
+
       {
-        items.map((item)=>{
+        items.map((item,index)=>(
 
-          const Icon = item.icon;
+          <button
+            key={item.name}
+            title={item.name}
+            className={`
+            w-10
+            h-10
+            rounded-2xl
+            flex
+            items-center
+            justify-center
+            text-lg
+            transition-all
+            ${
+              index === 0
+              ?
+              "bg-gradient-to-br from-purple-300 to-pink-300 text-white shadow-md"
+              :
+              "text-gray-400 hover:bg-purple-50 hover:text-purple-500"
+            }
+            `}
+          >
 
-          return(
-            <button
-              key={item.label}
-              title={item.label}
-              className="
-              w-10
-              h-10
-              rounded-2xl
-              flex
-              items-center
-              justify-center
-              text-gray-400
-              hover:bg-purple-100
-              hover:text-purple-500
-              transition
-              "
-            >
-              <Icon size={20}/>
-            </button>
-          )
+            {item.icon}
 
-        })
+          </button>
+
+        ))
       }
 
 
-      <div className="flex-1"/>
-
-
-      <button
-        className="
-w-10
-h-10
-rounded-2xl
-flex
-items-center
-justify-center
-bg-purple-100
-text-purple-500
-"
-      >
-        <Settings size={20}/>
-      </button>
-
-
     </aside>
-  )
+
+  );
+
 }
