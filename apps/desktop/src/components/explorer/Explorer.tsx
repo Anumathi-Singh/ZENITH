@@ -1,72 +1,59 @@
-import {
-  Folder,
-  FileCode2,
-  ChevronDown
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
+
+import FileTree from "./FileTree";
+import { fileTree } from "./treeData";
 
 
-export default function Explorer() {
+export default function Explorer(){
 
   return (
-    <div
+
+    <section
+
       className="
       rounded-3xl
-      bg-[#FFFEFF]
+      bg-white
       border
       border-purple-100
-      shadow-[0_10px_30px_rgba(120,90,180,0.08)]
       p-5
+      overflow-auto
       "
+
     >
 
-      <h2 className="text-sm font-semibold text-gray-700 mb-5">
+
+      <h2 className="text-lg font-bold mb-5">
         EXPLORER
       </h2>
 
 
-      <div className="flex items-center gap-2 text-sm font-medium mb-3">
-        <ChevronDown size={15}/>
+
+      <div
+
+        className="
+        flex
+        items-center
+        gap-2
+        mb-4
+        text-sm
+        "
+
+      >
+
+        <ChevronDown size={16}/>
+
         🌙 LUNARIS PROJECT
-      </div>
-
-
-      <div className="ml-5 space-y-3 text-sm text-gray-500">
-
-        <div className="flex items-center gap-2">
-          <Folder size={16}/>
-          src
-        </div>
-
-
-        <div className="ml-5 flex items-center gap-2">
-          <Folder size={16}/>
-          components
-        </div>
-
-
-        <div className="
-          flex
-          items-center
-          gap-2
-          px-3
-          py-2
-          rounded-xl
-          bg-purple-100
-          text-purple-600
-        ">
-          <FileCode2 size={16}/>
-          App.tsx
-        </div>
-
-
-        <div className="flex items-center gap-2">
-          <FileCode2 size={16}/>
-          main.tsx
-        </div>
-
 
       </div>
 
-    </div>
-  )
+
+
+      <FileTree
+        nodes={fileTree}
+      />
+
+
+    </section>
+
+  );
 }
