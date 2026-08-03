@@ -1,3 +1,6 @@
+import ThemeToggle from "../theme/ThemeToggle";
+
+
 export default function TopBar() {
 
   return (
@@ -125,39 +128,45 @@ export default function TopBar() {
 
 
       {/* Right */}
-      <div
-        className="
-        flex
-        items-center
-        gap-5
-        text-gray-500
-        "
-      >
+<div
+  className="
+    flex
+    items-center
+    gap-4
+    text-gray-500
+  "
+>
+  <ThemeToggle />
 
-        <button>
-          Git
-        </button>
+  <button
+    className="
+      hover:text-purple-600
+      transition
+    "
+  >
+    Git
+  </button>
 
+  <button
+    className="
+      hover:text-purple-600
+      transition
+    "
+  >
+    Settings
+  </button>
 
-        <button>
-          Settings
-        </button>
-
-
-        <div
-          className="
-          w-10
-          h-10
-          rounded-full
-          bg-gradient-to-br
-          from-pink-300
-          to-purple-300
-          "
-        />
-
-
-      </div>
-
+  <div
+    className="
+      w-10
+      h-10
+      rounded-full
+      bg-gradient-to-br
+      from-pink-300
+      to-purple-300
+    "
+  />
+</div>
 
     </header>
 

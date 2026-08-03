@@ -1,46 +1,54 @@
-import {
-  FolderOpen,
-  Bot,
-  Search,
-  GitBranch,
-  Settings,
-} from "lucide-react";
-
 import { useLayoutStore } from "./layoutStore";
 
-const items = [
+type Panel =
+  | "explorer"
+  | "search"
+  | "nova"
+  | "git"
+  | "settings"
+  | null;
+
+const items: {
+  icon: string;
+  name: string;
+  panel: Panel;
+}[] = [
   {
-    icon: FolderOpen,
+    icon: "⌂",
+    name: "Home",
+    panel: null,
+  },
+  {
+    icon: "▢",
     name: "Explorer",
     panel: "explorer",
   },
   {
-    icon: Bot,
-    name: "Nova",
-    panel: "nova",
-  },
-  {
-    icon: Search,
+    icon: "⌕",
     name: "Search",
     panel: "search",
   },
   {
-    icon: GitBranch,
+    icon: "✦",
+    name: "Nova",
+    panel: "nova",
+  },
+  {
+    icon: "⑂",
     name: "Git",
     panel: "git",
   },
   {
-    icon: Settings,
+    icon: "⚙",
     name: "Settings",
     panel: "settings",
   },
-] as const;
+];
 
 export default function ActivityBar() {
-
   const {
     activePanel,
-    togglePanel,
+    setActivePanel,
   } = useLayoutStore();
 
   return (
@@ -58,44 +66,42 @@ export default function ActivityBar() {
         flex-col
         items-center
         py-4
-        gap-3
+        gap-4
       "
     >
-      {items.map((item) => {
+      {items.map((item) => (
+        <button
+          key={item.name}
+          title={item.name}
+          onClick={() => {
+            if (!item.panel) return;
 
-        const Icon = item.icon;
+            setActivePanel(
+              activePanel === item.panel
+                ? null
+                : item.panel
+            );
+          }}
+          className={`
+            w-10
+            h-10
+            rounded-2xl
+            flex
+            items-center
+            justify-center
+            text-lg
+            transition-all
 
-        const active =
-          activePanel === item.panel;
-
-        return (
-          <button
-            key={item.name}
-            title={item.name}
-            onClick={() =>
-              togglePanel(item.panel)
+            ${
+              activePanel === item.panel
+                ? "bg-gradient-to-br from-purple-300 to-pink-300 text-white shadow-md"
+                : "text-gray-400 hover:bg-purple-50 hover:text-purple-500"
             }
-            className={`
-              w-10
-              h-10
-              rounded-2xl
-              flex
-              items-center
-              justify-center
-              transition-all
-
-              ${
-                active
-                  ? "bg-gradient-to-br from-violet-500 to-purple-500 text-white shadow-md"
-                  : "text-gray-500 hover:bg-purple-50 hover:text-violet-600"
-              }
-            `}
-          >
-            <Icon size={20} />
-          </button>
-        );
-
-      })}
+          `}
+        >
+          {item.icon}
+        </button>
+      ))}
     </aside>
   );
 }

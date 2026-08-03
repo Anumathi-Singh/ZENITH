@@ -1,10 +1,16 @@
 import ActivityBar from "./ActivityBar";
 import SidePanel from "./SidePanel";
 import Editor from "../editor/Editor";
+
 import { useLayoutStore } from "./layoutStore";
 
+
 export default function Workspace() {
-  const { activePanel } = useLayoutStore();
+
+  const {
+    activePanel,
+  } = useLayoutStore();
+
 
   return (
     <main
@@ -14,20 +20,21 @@ export default function Workspace() {
         ${
           activePanel
             ? "grid-cols-[64px_280px_1fr]"
-            : "grid-cols-[64px_1fr]"
+            : "grid-cols-[64px_0px_1fr]"
         }
         gap-4
         overflow-hidden
+        transition-all
+        duration-300
       `}
     >
-      {/* Activity Bar */}
+
       <ActivityBar />
 
-      {/* Dynamic Side Panel */}
-      {activePanel && <SidePanel />}
+      <SidePanel />
 
-      {/* Main Editor */}
       <Editor />
+
     </main>
   );
 }
