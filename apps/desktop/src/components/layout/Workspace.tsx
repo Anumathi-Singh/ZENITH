@@ -1,40 +1,33 @@
-import Sidebar from "./Sidebar";
-import Explorer from "../explorer/Explorer";
+import ActivityBar from "./ActivityBar";
+import SidePanel from "./SidePanel";
 import Editor from "../editor/Editor";
-import AIPanel from "../ai/AIPanel";
-
+import { useLayoutStore } from "./layoutStore";
 
 export default function Workspace() {
+  const { activePanel } = useLayoutStore();
 
   return (
-
     <main
-      className="
-      h-full
-      grid
-      grid-cols-[64px_minmax(220px,260px)_1fr_320px]
-      gap-4
-      overflow-hidden
-      "
+      className={`
+        h-full
+        grid
+        ${
+          activePanel
+            ? "grid-cols-[64px_280px_1fr]"
+            : "grid-cols-[64px_1fr]"
+        }
+        gap-4
+        overflow-hidden
+      `}
     >
+      {/* Activity Bar */}
+      <ActivityBar />
 
-      {/* Navigation */}
-      <Sidebar />
+      {/* Dynamic Side Panel */}
+      {activePanel && <SidePanel />}
 
-
-      {/* Files */}
-      <Explorer />
-
-
-      {/* Code Editor */}
+      {/* Main Editor */}
       <Editor />
-
-
-      {/* AI Assistant */}
-      <AIPanel />
-
-
     </main>
-
   );
 }
