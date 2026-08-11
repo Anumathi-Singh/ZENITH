@@ -1,18 +1,75 @@
 ﻿import { create } from "zustand";
 import type { FileNode } from "./treeData";
 import type { FileTab } from "../editor/editorStore";
+import type { ZenithDirectoryEntry } from "../../types/zenith-desktop";
 
-type ZenithFileHandle = { kind: "file"; name: string; getFile: () => Promise<File>; createWritable: () => Promise<{ write: (content: string) => Promise<void>; close: () => Promise<void> }> };
-export type WorkspaceNode = FileNode & { handle?: ZenithFileHandle };
-interface WorkspaceStore { rootName: string; tree: WorkspaceNode[]; message: string; openFolder: () => Promise<void>; loadFiles: (files: FileList) => Promise<void>; openFile: (node: WorkspaceNode) => Promise<FileTab | null>; createFile: (name: string) => WorkspaceNode | null; refresh: () => void; }
-const languageFor = (name: string) => ({ ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", json: "json", css: "css", html: "html", md: "markdown" }[name.split(".").pop()?.toLowerCase() ?? ""] ?? "plaintext");
-const sortNodes = (nodes: WorkspaceNode[]) => nodes.sort((left, right) => Number(right.type === "folder") - Number(left.type === "folder") || left.name.localeCompare(right.name));
-function buildFileTree(files: FileList): { rootName: string; tree: WorkspaceNode[] } { const roots: WorkspaceNode[] = []; const rootName = files[0]?.webkitRelativePath.split("/")[0] || "OPENED FOLDER"; for (const file of Array.from(files)) { const parts = file.webkitRelativePath.split("/").slice(1); let current = roots; let id = rootName; parts.forEach((part, index) => { id += `/${part}`; let node = current.find((item) => item.name === part); if (!node) { node = index === parts.length - 1 ? { id, name: part, type: "file", language: languageFor(part), content: "" } : { id, name: part, type: "folder", children: [] }; current.push(node); } if (node.type === "folder") current = node.children as WorkspaceNode[]; }); } return { rootName: rootName.toUpperCase(), tree: sortNodes(roots) }; }
+export type WorkspaceNode = FileNode & { path: string; loaded?: boolean };
+
+interface WorkspaceStore {
+  rootName: string;
+  rootPath: string | null;
+  tree: WorkspaceNode[];
+  message: string;
+  openFolder: () => Promise<void>;
+  loadDirectory: (directoryPath: string, parentId?: string) => Promise<void>;
+  openFile: (node: WorkspaceNode) => Promise<FileTab | null>;
+  refresh: () => Promise<void>;
+}
+
+const languageFor = (name: string) => ({ ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", json: "json", css: "css", html: "html", md: "markdown", yml: "yaml", yaml: "yaml", xml: "xml" }[name.split(".").pop()?.toLowerCase() ?? ""] ?? "plaintext");
+const idFor = (filePath: string) => `file:${filePath}`;
+const toNodes = (entries: ZenithDirectoryEntry[]): WorkspaceNode[] => entries.map((entry) => ({ id: idFor(entry.path), name: entry.name, path: entry.path, type: entry.type, language: entry.type === "file" ? languageFor(entry.name) : undefined, children: entry.type === "folder" ? [] : undefined, loaded: entry.type === "file" })).sort((left, right) => Number(right.type === "folder") - Number(left.type === "folder") || left.name.localeCompare(right.name));
+
+function replaceDirectory(nodes: WorkspaceNode[], parentId: string, children: WorkspaceNode[]): WorkspaceNode[] {
+  return nodes.map((node) => {
+    if (node.id === parentId) return { ...node, children, loaded: true };
+    if (node.children) return { ...node, children: replaceDirectory(node.children as WorkspaceNode[], parentId, children) };
+    return node;
+  });
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
-  rootName: "LUNARIS PROJECT", tree: [], message: "Open a folder to work with your files",
-  openFolder: async () => { window.dispatchEvent(new Event("zenith-open-folder-input")); set({ message: "Choose a folder to load into Zenith." }); },
-  loadFiles: async (files) => { if (!files.length) return; const { rootName, tree } = buildFileTree(files); const browserFiles = new Map(Array.from(files).map((file) => [file.webkitRelativePath, file])); const hydrate = async (nodes: WorkspaceNode[]) => Promise.all(nodes.map(async (node) => { if (node.type === "folder") { await hydrate(node.children as WorkspaceNode[]); return; } const file = browserFiles.get(node.id); if (file) node.content = await file.text(); })); await hydrate(tree); set({ rootName, tree, message: `${rootName} opened — files are ready.` }); },
-  openFile: async (node) => { if (!node.handle) return node.content !== undefined ? { id: node.id, name: node.name, language: node.language ?? "plaintext", content: node.content } : null; const file = await node.handle.getFile(); return { id: node.id, name: node.name, language: node.language ?? languageFor(node.name), content: await file.text(), fileHandle: node.handle }; },
-  createFile: (name) => { const clean = name.trim(); if (!clean || clean.includes("/") || clean.includes("\\")) return null; const id = `${get().rootName.toLowerCase()}/${clean}`; const node: WorkspaceNode = { id, name: clean, type: "file", language: languageFor(clean), content: "" }; set((state) => ({ tree: sortNodes([...state.tree, node]), message: `${clean} created in Zenith. Save it to download until the desktop runtime is connected.` })); return node; },
-  refresh: () => set((state) => ({ message: state.tree.length ? "Explorer refreshed." : "Open a folder to refresh its files." })),
+  rootName: "NO FOLDER OPEN",
+  rootPath: null,
+  tree: [],
+  message: "Open a project folder to begin.",
+  openFolder: async () => {
+    if (!window.zenithDesktop) {
+      set({ message: "Desktop filesystem bridge is unavailable. Start Zenith with npm run desktop:dev." });
+      return;
+    }
+
+    try {
+      const selected = await window.zenithDesktop.selectFolder();
+      if (!selected) return;
+      set({ rootName: selected.name.toUpperCase(), rootPath: selected.path, tree: [], message: `Opening ${selected.name}…` });
+      await get().loadDirectory(selected.path);
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : "Could not open the selected folder." });
+    }
+  },
+  loadDirectory: async (directoryPath, parentId) => {
+    if (!window.zenithDesktop) return;
+    try {
+      const children = toNodes(await window.zenithDesktop.readDirectory(directoryPath));
+      set((state) => parentId ? { tree: replaceDirectory(state.tree, parentId, children), message: "Folder loaded." } : { tree: children, message: `${state.rootName} is ready.` });
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : "Could not read this directory." });
+    }
+  },
+  openFile: async (node) => {
+    if (!window.zenithDesktop || node.type !== "file") return null;
+    try {
+      return { id: node.id, name: node.name, path: node.path, language: node.language ?? languageFor(node.name), content: await window.zenithDesktop.readFile(node.path) };
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : "Could not read this file." });
+      return null;
+    }
+  },
+  refresh: async () => {
+    const { rootPath, rootName } = get();
+    if (!rootPath) { set({ message: "Open a folder to refresh its files." }); return; }
+    set({ message: `Refreshing ${rootName}…` });
+    await get().loadDirectory(rootPath);
+  },
 }));

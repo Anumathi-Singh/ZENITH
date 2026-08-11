@@ -2,20 +2,21 @@
 
 export type PanelType = "explorer" | "nova" | "search" | "git" | "settings" | null;
 
+const MIN_PANEL_WIDTH = 220;
+const MAX_PANEL_WIDTH = 520;
+
 interface LayoutStore {
   activePanel: PanelType;
-  isAiPanelOpen: boolean;
+  sidePanelWidth: number;
   setActivePanel: (panel: PanelType) => void;
   togglePanel: (panel: Exclude<PanelType, null>) => void;
-  setAiPanelOpen: (isOpen: boolean) => void;
-  toggleAiPanel: () => void;
+  setSidePanelWidth: (width: number) => void;
 }
 
 export const useLayoutStore = create<LayoutStore>((set) => ({
   activePanel: "explorer",
-  isAiPanelOpen: true,
+  sidePanelWidth: 280,
   setActivePanel: (panel) => set({ activePanel: panel }),
   togglePanel: (panel) => set((state) => ({ activePanel: state.activePanel === panel ? null : panel })),
-  setAiPanelOpen: (isOpen) => set({ isAiPanelOpen: isOpen }),
-  toggleAiPanel: () => set((state) => ({ isAiPanelOpen: !state.isAiPanelOpen })),
+  setSidePanelWidth: (width) => set({ sidePanelWidth: Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(width))) }),
 }));

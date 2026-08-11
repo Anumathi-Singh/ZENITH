@@ -7,8 +7,25 @@ import ResizeHandle from "./components/terminal/ResizeHandle";
 import { useTheme } from "./components/theme/useTheme";
 
 function App() {
-  const [terminalHeight, setTerminalHeight] = useState(114);
+  const [terminalHeight, setTerminalHeight] = useState(160);
   const { theme, themeName } = useTheme();
-  return <div className={`zenith-app theme-${themeName}`} style={{ background: theme.background, color: theme.text }}><TopBar /><Terminal height={terminalHeight} /><ResizeHandle onResize={setTerminalHeight} /><div className="workspace-wrap"><Workspace /></div><StatusBar /></div>;
+
+  return (
+    <div
+      className={`h-screen flex flex-col gap-4 p-4 overflow-hidden transition-colors duration-300 theme-${themeName}`}
+      style={{ background: theme.background, color: theme.text }}
+    >
+      <TopBar />
+
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <Workspace />
+      </div>
+
+      <ResizeHandle onResize={setTerminalHeight} />
+      <Terminal height={terminalHeight} />
+      <StatusBar />
+    </div>
+  );
 }
+
 export default App;

@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Bot, Boxes, FileCode2, GitBranch, Search, Settings, Sparkles } from "lucide-react";
 import { useLayoutStore, type PanelType } from "./layoutStore";
 
@@ -12,10 +12,10 @@ const items: { icon: typeof FileCode2; name: string; panel: Exclude<PanelType, n
 ];
 
 export default function ActivityBar() {
-  const { activePanel, togglePanel, toggleAiPanel } = useLayoutStore();
+  const { activePanel, togglePanel } = useLayoutStore();
   const [notice, setNotice] = useState("");
   const activate = (panel: Exclude<PanelType, null>) => {
-    if (panel === "nova") { toggleAiPanel(); setNotice("Zenith AI toggled"); return; }
+    if (panel === "nova") { togglePanel("nova"); setNotice("Zenith AI toggled"); return; }
     togglePanel(panel);
   };
   return <aside className="activity-bar"><div className="activity-main">{items.map(({ icon: Icon, name, panel }) => <button key={name} title={name} aria-label={name} onClick={() => activate(panel)} className={`activity-button ${activePanel === panel && panel !== "nova" ? "active" : ""}`}><Icon size={21} /></button>)}</div><div className="activity-bottom"><button className="activity-button" title="Settings" onClick={() => togglePanel("settings")}><Settings size={21} /></button><div className="avatar">A</div>{notice && <span className="sr-only">{notice}</span>}</div></aside>;
