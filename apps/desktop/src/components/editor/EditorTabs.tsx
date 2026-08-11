@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+﻿import { X } from "lucide-react";
 import { useEditorStore } from "./editorStore";
 
 export default function EditorTabs() {
@@ -14,7 +14,7 @@ export default function EditorTabs() {
   return (
     <div
       className="
-        h-14
+        editor-tabs h-14
         border-b
         border-purple-100
         bg-white
@@ -55,7 +55,7 @@ export default function EditorTabs() {
 
             {tab.isDirty && (
               <span className="text-violet-500">
-                ●
+                â—
               </span>
             )}
 

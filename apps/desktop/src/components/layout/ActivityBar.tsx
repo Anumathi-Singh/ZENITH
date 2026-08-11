@@ -1,107 +1,22 @@
-import { useLayoutStore } from "./layoutStore";
+﻿import { useState } from "react";
+import { Bot, Boxes, FileCode2, GitBranch, Search, Settings, Sparkles } from "lucide-react";
+import { useLayoutStore, type PanelType } from "./layoutStore";
 
-type Panel =
-  | "explorer"
-  | "search"
-  | "nova"
-  | "git"
-  | "settings"
-  | null;
-
-const items: {
-  icon: string;
-  name: string;
-  panel: Panel;
-}[] = [
-  {
-    icon: "⌂",
-    name: "Home",
-    panel: null,
-  },
-  {
-    icon: "▢",
-    name: "Explorer",
-    panel: "explorer",
-  },
-  {
-    icon: "⌕",
-    name: "Search",
-    panel: "search",
-  },
-  {
-    icon: "✦",
-    name: "Nova",
-    panel: "nova",
-  },
-  {
-    icon: "⑂",
-    name: "Git",
-    panel: "git",
-  },
-  {
-    icon: "⚙",
-    name: "Settings",
-    panel: "settings",
-  },
+const items: { icon: typeof FileCode2; name: string; panel: Exclude<PanelType, null> }[] = [
+  { icon: FileCode2, name: "Explorer", panel: "explorer" },
+  { icon: Search, name: "Search", panel: "search" },
+  { icon: GitBranch, name: "Source Control", panel: "git" },
+  { icon: Sparkles, name: "Zenith AI", panel: "nova" },
+  { icon: Bot, name: "Agents", panel: "nova" },
+  { icon: Boxes, name: "Extensions", panel: "settings" },
 ];
 
 export default function ActivityBar() {
-  const {
-    activePanel,
-    setActivePanel,
-  } = useLayoutStore();
-
-  return (
-    <aside
-      className="
-        h-full
-        w-16
-        rounded-3xl
-        bg-white/70
-        backdrop-blur-xl
-        border
-        border-purple-100
-        shadow-[0_10px_30px_rgba(120,90,180,0.08)]
-        flex
-        flex-col
-        items-center
-        py-4
-        gap-4
-      "
-    >
-      {items.map((item) => (
-        <button
-          key={item.name}
-          title={item.name}
-          onClick={() => {
-            if (!item.panel) return;
-
-            setActivePanel(
-              activePanel === item.panel
-                ? null
-                : item.panel
-            );
-          }}
-          className={`
-            w-10
-            h-10
-            rounded-2xl
-            flex
-            items-center
-            justify-center
-            text-lg
-            transition-all
-
-            ${
-              activePanel === item.panel
-                ? "bg-gradient-to-br from-purple-300 to-pink-300 text-white shadow-md"
-                : "text-gray-400 hover:bg-purple-50 hover:text-purple-500"
-            }
-          `}
-        >
-          {item.icon}
-        </button>
-      ))}
-    </aside>
-  );
+  const { activePanel, togglePanel, toggleAiPanel } = useLayoutStore();
+  const [notice, setNotice] = useState("");
+  const activate = (panel: Exclude<PanelType, null>) => {
+    if (panel === "nova") { toggleAiPanel(); setNotice("Zenith AI toggled"); return; }
+    togglePanel(panel);
+  };
+  return <aside className="activity-bar"><div className="activity-main">{items.map(({ icon: Icon, name, panel }) => <button key={name} title={name} aria-label={name} onClick={() => activate(panel)} className={`activity-button ${activePanel === panel && panel !== "nova" ? "active" : ""}`}><Icon size={21} /></button>)}</div><div className="activity-bottom"><button className="activity-button" title="Settings" onClick={() => togglePanel("settings")}><Settings size={21} /></button><div className="avatar">A</div>{notice && <span className="sr-only">{notice}</span>}</div></aside>;
 }

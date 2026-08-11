@@ -1,4 +1,4 @@
-import Breadcrumb from "./Breadcrumb";
+﻿import Breadcrumb from "./Breadcrumb";
 import EditorTabs from "./EditorTabs";
 import MonacoEditor from "./MonacoEditor";
 
@@ -6,7 +6,7 @@ export default function Editor() {
   return (
     <section
       className="
-        rounded-3xl
+        editor-panel rounded-3xl
         bg-white
         border
         border-purple-100
