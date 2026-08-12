@@ -34,7 +34,10 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
   const startedInitialSession = useRef(false);
   const profileMenuRef = useDismissableLayer<HTMLDivElement>(profileMenuOpen, () => setProfileMenuOpen(false));
 
-  const xtermTheme = useMemo(() => ({ background: theme.terminalBackground, foreground: theme.terminalForeground, cursor: theme.terminalCursor, selectionBackground: theme.terminalSelection }), [theme]);
+  const xtermTheme = useMemo(() => {
+    const palette = theme.terminal.emulator;
+    return { background: palette.background, foreground: palette.foreground, cursor: palette.cursor, selectionBackground: palette.selection, black: palette.black, red: palette.red, green: palette.green, yellow: palette.yellow, blue: palette.blue, magenta: palette.magenta, cyan: palette.cyan, white: palette.white, brightBlack: palette.brightBlack, brightRed: palette.brightRed, brightGreen: palette.brightGreen, brightYellow: palette.brightYellow, brightBlue: palette.brightBlue, brightMagenta: palette.brightMagenta, brightCyan: palette.brightCyan, brightWhite: palette.brightWhite };
+  }, [theme]);
 
   const fitSession = useCallback((id: string) => {
     const view = views.current.get(id);
@@ -114,10 +117,11 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
       try {
         const availableProfiles = await window.zenithDesktop.getTerminalProfiles();
         setProfiles(availableProfiles);
-        if (availableProfiles[0]) setSelectedProfileId(availableProfiles[0].id);
+        const preferredProfile = availableProfiles.find((profile) => profile.id === defaultTerminalProfile || profile.label === defaultTerminalProfile) ?? availableProfiles[0];
+        if (preferredProfile) setSelectedProfileId(preferredProfile.id);
         if (!startedInitialSession.current) {
           startedInitialSession.current = true;
-          await createSession(availableProfiles[0]?.id);
+          await createSession(preferredProfile?.id);
         }
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Could not discover terminal profiles.");
@@ -177,7 +181,7 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
           {!collapsed && <button title="Close active terminal" disabled={!activeId} onClick={() => activeId && void closeSession(activeId)}><X size={17} /></button>}
         </div>
       </header>
-      {!collapsed && <><div className="terminal-body zenith-terminal-body">{sessions.map((session) => <div key={session.id} ref={(element) => { if (element) hosts.current.set(session.id, element); else hosts.current.delete(session.id); }} className={`zenith-terminal-host ${session.id === activeId ? "active" : ""}`} />)}{!sessions.length && !error && <button className="terminal-start" onClick={() => void createSession()}>Start a terminal</button>}{error && <p className="terminal-error">{error}</p>}</div><div className="terminal-orb" /></>}
+      {!collapsed && <div className="terminal-body zenith-terminal-body">{sessions.map((session) => <div key={session.id} ref={(element) => { if (element) hosts.current.set(session.id, element); else hosts.current.delete(session.id); }} className={`zenith-terminal-host ${session.id === activeId ? "active" : ""}`} />)}{!sessions.length && !error && <button className="terminal-start" onClick={() => void createSession()}>Start a terminal</button>}{error && <p className="terminal-error">{error}</p>}</div>}
     </section>
   );
 }

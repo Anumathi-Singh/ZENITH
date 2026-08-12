@@ -1,6 +1,7 @@
 ﻿import { BookOpen, Cloud, GitFork, KeyRound, LifeBuoy, Mail, ShieldAlert } from "lucide-react";
 import Dialog from "./Dialog";
 import { useUiStore } from "./uiStore";
+import zenithMark from "../../assets/logo/zenith-mark-transparent.png";
 
 export default function ZenithDialogs() {
   const { dialog, closeDialog, openDialog } = useUiStore();
@@ -18,6 +19,6 @@ export default function ZenithDialogs() {
   }
   if (dialog.name === "shortcuts") return <Dialog title="Keyboard Shortcuts" subtitle="Core local commands available in Zenith" onClose={closeDialog}><div className="shortcut-list"><p><span>Command Palette</span><kbd>Ctrl K</kbd></p><p><span>Save active file</span><kbd>Ctrl S</kbd></p><p><span>Open Settings</span><kbd>Ctrl ,</kbd></p><p><span>Toggle Explorer</span><kbd>Ctrl Shift E</kbd></p><p><span>Toggle terminal</span><kbd>Ctrl `</kbd></p></div></Dialog>;
   if (dialog.name === "help") return <Dialog title="Zenith Help" subtitle="A calm workspace for building on your computer" onClose={closeDialog}><div className="help-grid"><button onClick={() => openDialog("shortcuts")}><KeyRound size={18} /><span><strong>Keyboard shortcuts</strong><small>Browse the available local commands.</small></span></button><button onClick={() => openDialog("about")}><BookOpen size={18} /><span><strong>About Zenith</strong><small>Product and desktop information.</small></span></button><button disabled><LifeBuoy size={18} /><span><strong>Get support</strong><small>Support will be available with online services.</small></span></button></div></Dialog>;
-  return <Dialog title="About Zenith" subtitle="Code · Create · Elevate" onClose={closeDialog} size="small"><div className="service-dialog"><div className="service-icon"><Mail size={22} /></div><p>Zenith is a local-first desktop development workspace with files, tabs, Monaco editing, and terminal sessions running on your computer.</p><small className="honest-note"><ShieldAlert size={13} />No cloud account is connected.</small></div></Dialog>;
+  return <Dialog title="About Zenith" subtitle="Code · Create · Elevate" onClose={closeDialog} size="small"><div className="service-dialog"><div className="service-icon zenith-about-mark"><Mail aria-hidden="true" /><img src={zenithMark} alt="Zenith" /></div><p>Zenith is a local-first desktop development workspace with files, tabs, Monaco editing, and terminal sessions running on your computer.</p><small className="honest-note"><ShieldAlert size={13} />No cloud account is connected.</small></div></Dialog>;
 }
 

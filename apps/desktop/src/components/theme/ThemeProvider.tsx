@@ -1,17 +1,52 @@
-﻿import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { themes, type ThemeName } from "./themes";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { cssVariablesForTheme, fallbackThemeName, isThemeName, themeRegistry, type ThemeName } from "./themes";
 import { ThemeContext } from "./ThemeContext";
 import { notify } from "../ui/uiStore";
 
 interface Props { children: ReactNode; }
-const storageKey = "zenith-theme";
-const isThemeName = (value: string | null): value is ThemeName => Boolean(value && value in themes);
+const themeStorageKey = "zenith-theme";
+const lightStorageKey = "zenith-light-theme";
+const darkStorageKey = "zenith-dark-theme";
+const readTheme = (key: string, fallback: ThemeName): ThemeName => {
+  try { const value = localStorage.getItem(key); return isThemeName(value) ? value : fallback; }
+  catch { return fallback; }
+};
 
 export default function ThemeProvider({ children }: Props) {
-  const [themeName, setThemeName] = useState<ThemeName>(() => { const saved = localStorage.getItem(storageKey); return isThemeName(saved) ? saved : "light"; });
-  useEffect(() => { const theme = themes[themeName]; const root = document.documentElement; root.dataset.theme = themeName; Object.entries({ "--z-app": theme.background, "--z-glow": theme.backgroundGlow, "--z-surface": theme.surface, "--z-surface-raised": theme.surfaceRaised, "--z-surface-muted": theme.surfaceMuted, "--z-editor": theme.editorBackground, "--z-text": theme.text, "--z-text-secondary": theme.textSecondary, "--z-muted": theme.muted, "--z-border": theme.border, "--z-border-strong": theme.borderStrong, "--z-accent": theme.accent, "--z-accent-hover": theme.accentHover, "--z-accent-soft": theme.accentSoft, "--z-accent-warm": theme.accentWarm, "--z-selection": theme.selection, "--z-hover": theme.hover, "--z-terminal": theme.terminalBackground, "--z-terminal-text": theme.terminalForeground, "--z-status": theme.statusBackground, "--z-success": theme.success, "--z-danger": theme.danger }).forEach(([token, value]) => root.style.setProperty(token, value)); localStorage.setItem(storageKey, themeName); }, [themeName]);
-  const chooseTheme = (name: ThemeName) => setThemeName((current) => { if (current !== name) notify(`${themes[name].label} applied.`, "success"); return name; });
-  const value = useMemo(() => ({ themeName, theme: themes[themeName], toggleTheme: () => chooseTheme(themeName === "dark" ? "light" : "dark"), setTheme: chooseTheme }), [themeName]);
+  const [appliedThemeName, setAppliedThemeName] = useState<ThemeName>(() => readTheme(themeStorageKey, fallbackThemeName));
+  const [previewThemeName, setPreviewThemeName] = useState<ThemeName | null>(null);
+  const [lightThemeName, setLightThemeName] = useState<ThemeName>(() => readTheme(lightStorageKey, "light"));
+  const [darkThemeName, setDarkThemeName] = useState<ThemeName>(() => readTheme(darkStorageKey, "dark"));
+  const themeName = previewThemeName ?? appliedThemeName;
+  const theme = themeRegistry[themeName] ?? themeRegistry[fallbackThemeName];
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme.id;
+    root.dataset.appearance = theme.appearanceMode;
+    root.dataset.decorationStyle = theme.decoration.style;
+    Object.entries(cssVariablesForTheme(theme)).forEach(([token, value]) => root.style.setProperty(token, value));
+  }, [theme]);
+
+  const setTheme = useCallback((name: ThemeName) => {
+    const next = themeRegistry[name] ? name : fallbackThemeName;
+    setAppliedThemeName(next); setPreviewThemeName(null);
+    try { localStorage.setItem(themeStorageKey, next); } catch { /* persistence is optional */ }
+    notify(`${themeRegistry[next].label} applied.`, "success");
+  }, []);
+  const previewTheme = useCallback((name: ThemeName) => { if (themeRegistry[name]) setPreviewThemeName(name); }, []);
+  const clearPreview = useCallback(() => setPreviewThemeName(null), []);
+  const setPreferredTheme = useCallback((mode: "light" | "dark", name: ThemeName) => {
+    if (!themeRegistry[name]) return;
+    if (mode === "light") { setLightThemeName(name); try { localStorage.setItem(lightStorageKey, name); } catch { /* optional */ } }
+    else { setDarkThemeName(name); try { localStorage.setItem(darkStorageKey, name); } catch { /* optional */ } }
+    notify(`${themeRegistry[name].label} set as your ${mode} preference.`, "success");
+  }, []);
+  const toggleTheme = useCallback(() => {
+    const active = themeRegistry[previewThemeName ?? appliedThemeName] ?? themeRegistry[fallbackThemeName];
+    setTheme(active.appearanceMode === "light" || (active.appearanceMode === "mixed" && active.monaco.mode === "light") ? darkThemeName : lightThemeName);
+  }, [appliedThemeName, darkThemeName, lightThemeName, previewThemeName, setTheme]);
+
+  const value = useMemo(() => ({ themeName, appliedThemeName, previewThemeName, theme, lightThemeName, darkThemeName, toggleTheme, setTheme, previewTheme, clearPreview, setPreferredTheme }), [appliedThemeName, clearPreview, darkThemeName, lightThemeName, previewTheme, previewThemeName, setPreferredTheme, setTheme, theme, themeName, toggleTheme]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
-

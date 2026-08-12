@@ -1,43 +1,53 @@
 ﻿import { useEffect, useMemo } from "react";
 import Editor from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
-import zenithMark from "../../assets/logo/zenith-mark-transparent.png";
 import { useEditorStore } from "./editorStore";
 import { useTheme } from "../theme/useTheme";
 import { themes } from "../theme/themes";
 import { useEditorPreferences } from "./editorPreferences";
+import { useWorkspaceStore } from "../explorer/workspaceStore";
 
 function defineZenithThemes(monaco: typeof Monaco) {
   Object.entries(themes).forEach(([name, theme]) => {
+    const palette = theme.monaco;
+    const color = (value: string) => value.replace("#", "");
     monaco.editor.defineTheme(`zenith-${name}`, {
-      base: theme.mode === "dark" ? "vs-dark" : "vs",
+      base: palette.mode === "dark" ? "vs-dark" : "vs",
       inherit: true,
       rules: [
-        { token: "comment", foreground: theme.muted.replace("#", ""), fontStyle: "italic" },
-        { token: "keyword", foreground: theme.accent.replace("#", "") },
-        { token: "string", foreground: theme.mode === "dark" ? "C6D69A" : "6A7C39" },
-        { token: "number", foreground: theme.accentWarm.replace("#", "") },
-        { token: "type.identifier", foreground: theme.mode === "dark" ? "A9C7FF" : "496BB5" },
+        { token: "comment", foreground: color(palette.syntax.comment), fontStyle: "italic" },
+        { token: "keyword", foreground: color(palette.syntax.keyword) },
+        { token: "string", foreground: color(palette.syntax.string) },
+        { token: "number", foreground: color(palette.syntax.number) },
+        { token: "type.identifier", foreground: color(palette.syntax.type) },
+        { token: "function", foreground: color(palette.syntax.function) },
+        { token: "variable", foreground: color(palette.syntax.variable) },
+        { token: "constant", foreground: color(palette.syntax.constant) },
       ],
       colors: {
-        "editor.background": theme.editorBackground,
-        "editor.foreground": theme.text,
-        "editorLineNumber.foreground": theme.muted,
-        "editorLineNumber.activeForeground": theme.text,
-        "editorCursor.foreground": theme.accentWarm,
-        "editor.selectionBackground": theme.selection,
-        "editor.inactiveSelectionBackground": theme.accentSoft,
-        "editor.lineHighlightBackground": theme.surfaceMuted,
-        "editorGutter.background": theme.editorBackground,
-        "editorIndentGuide.background1": theme.border,
-        "editorIndentGuide.activeBackground1": theme.borderStrong,
-        "editorWhitespace.foreground": theme.border,
-        "editorWidget.background": theme.surfaceRaised,
-        "editorWidget.border": theme.borderStrong,
-        "editorSuggestWidget.background": theme.surfaceRaised,
-        "minimap.background": theme.editorBackground,
-        "scrollbarSlider.background": `${theme.borderStrong}88`,
-        "scrollbarSlider.hoverBackground": theme.borderStrong,
+        "editor.background": palette.background,
+        "editor.foreground": palette.foreground,
+        "editorLineNumber.foreground": palette.lineNumber,
+        "editorLineNumber.activeForeground": palette.activeLineNumber,
+        "editorCursor.foreground": palette.cursor,
+        "editor.selectionBackground": palette.selection,
+        "editor.inactiveSelectionBackground": palette.inactiveSelection,
+        "editor.lineHighlightBackground": palette.currentLine,
+        "editorGutter.background": palette.gutter,
+        "editorIndentGuide.background1": palette.indentGuide,
+        "editorIndentGuide.activeBackground1": palette.activeIndentGuide,
+        "editorBracketPairGuide.background1": palette.bracketGuide,
+        "editorWhitespace.foreground": palette.indentGuide,
+        "editorWidget.background": theme.floating.elevated,
+        "editorWidget.border": theme.floating.border,
+        "editorSuggestWidget.background": theme.floating.elevated,
+        "editorSuggestWidget.border": theme.floating.border,
+        "minimap.background": palette.minimap,
+        "scrollbarSlider.background": `${palette.scrollbar}88`,
+        "scrollbarSlider.hoverBackground": palette.scrollbarHover,
+        "editor.findMatchBackground": palette.findMatch,
+        "editor.findMatchHighlightBackground": palette.findHighlight,
+        "editor.wordHighlightBackground": palette.wordHighlight,
       },
     });
   });
@@ -47,6 +57,7 @@ export default function MonacoEditor() {
   const { tabs, activeTab, updateContent, saveTab } = useEditorStore();
   const { themeName } = useTheme();
   const { fontSize, minimap, wordWrap } = useEditorPreferences();
+  const openFolder = useWorkspaceStore((state) => state.openFolder);
   const currentTab = tabs.find((tab) => tab.id === activeTab);
 
   useEffect(() => {
@@ -76,7 +87,7 @@ export default function MonacoEditor() {
   }), [fontSize, minimap, wordWrap]);
 
   if (!currentTab) {
-    return <div className="editor-empty-state"><img src={zenithMark} alt="Zenith" /><h2>Ready when you are</h2><p>Open a folder, then choose a file to begin editing.</p></div>;
+    return <div className="editor-empty-state"><h2>Ready when you are</h2><p>Open a folder, then choose a file to begin editing.</p><button onClick={() => void openFolder()}>Open Folder</button></div>;
   }
 
   return (

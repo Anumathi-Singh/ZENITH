@@ -2,12 +2,13 @@
 import { useTheme } from "./useTheme";
 
 export default function ThemeToggle() {
-  const { themeName, toggleTheme } = useTheme();
-  const label = themeName === "light" ? "Switch to midnight mode" : "Switch to light mode";
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme.appearanceMode === "dark" || (theme.appearanceMode === "mixed" && theme.monaco.mode === "dark");
+  const label = isDark ? "Switch to light preference" : "Switch to dark preference";
 
   return (
     <button onClick={toggleTheme} className="round-control" title={label} aria-label={label}>
-      {themeName === "light" ? <Moon size={17} /> : <Sun size={17} />}
+      {isDark ? <Sun size={17} /> : <Moon size={17} />}
     </button>
   );
 }

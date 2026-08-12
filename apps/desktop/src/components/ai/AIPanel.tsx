@@ -4,11 +4,11 @@ import { useDismissableLayer } from "../ui/useDismissableLayer";
 import { useLayoutStore } from "../layout/layoutStore";
 
 const agents = [
-  ["Planner", "Analyzing requirements", Brain, "lavender"],
-  ["Coder", "Ready to code", Code2, "mint"],
-  ["Reviewer", "Waiting for changes", Sparkles, "rose"],
-  ["Tester", "Waiting for build", Bot, "blue"],
-  ["Docs", "Ready to document", FileText, "peach"],
+  ["Planner", "Analyzing requirements", Brain, "planner"],
+  ["Coder", "Ready to code", Code2, "coder"],
+  ["Reviewer", "Waiting for changes", Sparkles, "reviewer"],
+  ["Tester", "Waiting for build", Bot, "tester"],
+  ["Docs", "Ready to document", FileText, "docs"],
 ] as const;
 
 export default function AIPanel() {

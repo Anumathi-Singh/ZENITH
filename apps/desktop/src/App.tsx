@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import TopBar from "./components/layout/TopBar";
 import Workspace from "./components/layout/Workspace";
 import Terminal from "./components/terminal/Terminal";
@@ -9,18 +9,27 @@ import ToastViewport from "./components/ui/ToastViewport";
 import ZenithDialogs from "./components/ui/ZenithDialogs";
 import { useAppPreferences } from "./components/settings/appPreferences";
 import { useLayoutStore } from "./components/layout/layoutStore";
+import { useUiStore } from "./components/ui/uiStore";
+import SettingsView from "./components/settings/SettingsView";
 
 function App() {
   const [terminalHeight, setTerminalHeight] = useState(220);
   const [terminalCollapsed, setTerminalCollapsed] = useState(false);
   const [terminalMaximized, setTerminalMaximized] = useState(false);
-  const { themeName } = useTheme();
-  const { density, animations, reducedMotion, panelBorders, showAiOnStartup } = useAppPreferences();
+  const { themeName, clearPreview } = useTheme();
+  const { density, animations, reducedMotion, panelBorders, panelTransparency, showAiOnStartup } = useAppPreferences();
   const setAIPanelOpen = useLayoutStore((state) => state.setAIPanelOpen);
-  useEffect(() => { document.documentElement.dataset.density = density; document.documentElement.dataset.panelBorders = String(panelBorders); document.documentElement.dataset.motion = animations && !reducedMotion ? "full" : "reduced"; }, [animations, density, panelBorders, reducedMotion]);
+  const { settingsOpen, closeSettings } = useUiStore();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.density = density; root.dataset.panelBorders = String(panelBorders);
+    root.dataset.transparency = String(panelTransparency);
+    root.dataset.motion = animations && !reducedMotion ? "full" : "reduced";
+  }, [animations, density, panelBorders, panelTransparency, reducedMotion]);
   useEffect(() => { setAIPanelOpen(showAiOnStartup); }, [setAIPanelOpen, showAiOnStartup]);
   const toggleTerminal = () => { setTerminalMaximized(false); setTerminalCollapsed((value) => !value); };
   const toggleMaximizedTerminal = () => { setTerminalCollapsed(false); setTerminalMaximized((value) => !value); };
-  return <div className={`zenith-app theme-${themeName}`}><TopBar onToggleTerminal={toggleTerminal} terminalCollapsed={terminalCollapsed} />{!terminalMaximized && <div className="workspace-wrap"><Workspace /></div>}{!terminalMaximized && !terminalCollapsed && <ResizeHandle onResize={setTerminalHeight} />}<Terminal height={terminalHeight} collapsed={terminalCollapsed} maximized={terminalMaximized} onToggleCollapsed={toggleTerminal} onToggleMaximized={toggleMaximizedTerminal} /><StatusBar /><ZenithDialogs /><ToastViewport /></div>;
+  const dismissSettings = () => { clearPreview(); closeSettings(); };
+  return <div className={`zenith-app theme-${themeName}`}><TopBar onToggleTerminal={toggleTerminal} terminalCollapsed={terminalCollapsed} />{!terminalMaximized && <div className="workspace-wrap"><Workspace /></div>}{!terminalMaximized && !terminalCollapsed && <ResizeHandle onResize={setTerminalHeight} />}<Terminal height={terminalHeight} collapsed={terminalCollapsed} maximized={terminalMaximized} onToggleCollapsed={toggleTerminal} onToggleMaximized={toggleMaximizedTerminal} /><StatusBar />{settingsOpen && <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissSettings(); }}><SettingsView /></div>}<ZenithDialogs /><ToastViewport /></div>;
 }
 export default App;

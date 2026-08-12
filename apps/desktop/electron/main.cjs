@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const childProcess = require("node:child_process");
 const pty = require("node-pty");
 
 let mainWindow;
@@ -32,16 +33,49 @@ function fileExists(filePath) {
   return typeof filePath === "string" && filePath.length > 0 && fsSync.existsSync(filePath);
 }
 
+function firstExisting(candidates) {
+  return candidates.find((candidate) => fileExists(candidate));
+}
+
+function executableOnPath(fileName) {
+  const directories = String(process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  return firstExisting(directories.map((directory) => path.join(directory.replace(/^"|"$/g, ""), fileName)));
+}
+
+function hasWslDistribution(systemRoot, wslExecutable) {
+  if (!wslExecutable) return false;
+  try {
+    const registry = childProcess.execFileSync(path.join(systemRoot, "System32", "reg.exe"), ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss", "/s"], { encoding: "utf8", windowsHide: true, timeout: 1500, stdio: ["ignore", "pipe", "ignore"] });
+    return /DistributionName\s+REG_SZ\s+\S+/i.test(registry);
+  } catch {
+    return false;
+  }
+}
+
 function terminalProfiles() {
   if (process.platform === "win32") {
     const systemRoot = process.env.SystemRoot || "C:\\Windows";
-    const programFiles = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.LOCALAPPDATA].filter(Boolean);
+    const programFiles = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"]].filter(Boolean);
+    const commandPrompt = firstExisting([process.env.ComSpec, path.join(systemRoot, "System32", "cmd.exe"), executableOnPath("cmd.exe")]);
+    const powershell = firstExisting([path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), executableOnPath("powershell.exe")]);
+    const powershell7 = firstExisting([path.join(process.env.ProgramFiles || "", "PowerShell", "7", "pwsh.exe"), executableOnPath("pwsh.exe")]);
+    const gitBashCandidates = [
+      ...programFiles.map((directory) => path.join(directory, "Git", "bin", "bash.exe")),
+      path.join(process.env.LOCALAPPDATA || "", "Programs", "Git", "bin", "bash.exe"),
+    ];
+    const gitExecutable = executableOnPath("git.exe");
+    if (gitExecutable) gitBashCandidates.push(path.resolve(path.dirname(gitExecutable), "..", "bin", "bash.exe"));
+    const gitBash = firstExisting(gitBashCandidates);
+    const wslCandidate = firstExisting([path.join(systemRoot, "System32", "wsl.exe"), executableOnPath("wsl.exe")]);
+    const wsl = hasWslDistribution(systemRoot, wslCandidate) ? wslCandidate : undefined;
+    const nuShell = executableOnPath("nu.exe");
     const profiles = [
-      { id: "powershell", label: "PowerShell", executable: path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), args: ["-NoLogo"] },
-      { id: "command-prompt", label: "Command Prompt", executable: process.env.ComSpec || path.join(systemRoot, "System32", "cmd.exe"), args: [] },
-      { id: "powershell-7", label: "PowerShell 7", executable: path.join(process.env.ProgramFiles || "", "PowerShell", "7", "pwsh.exe"), args: ["-NoLogo"] },
-      { id: "git-bash", label: "Git Bash", executable: programFiles.map((directory) => path.join(directory, "Git", "bin", "bash.exe")).find(fileExists), args: ["--login", "-i"] },
-      { id: "wsl", label: "WSL", executable: path.join(systemRoot, "System32", "wsl.exe"), args: [] },
+      { id: "powershell", label: "PowerShell", executable: powershell, args: ["-NoLogo"] },
+      { id: "command-prompt", label: "Command Prompt", executable: commandPrompt, args: [] },
+      { id: "powershell-7", label: "PowerShell 7", executable: powershell7, args: ["-NoLogo"] },
+      { id: "git-bash", label: "Git Bash", executable: gitBash, args: ["--login"] },
+      { id: "wsl", label: "WSL", executable: wsl, args: [] },
+      { id: "nushell", label: "NuShell", executable: nuShell, args: [] },
     ];
     return profiles.filter((profile) => fileExists(profile.executable));
   }
