@@ -1,36 +1,26 @@
-:root {
-
-  /* Zenith Core Colors */
-
-  --zenith-bg: #FBF9FF;
-
-  --zenith-panel: #FFFFFF;
-
-  --zenith-border: #E9DFFF;
-
-
-  /* Accent */
-
-  --zenith-purple: #BFA4FF;
-
-  --zenith-pink: #F4C2FF;
-
-  --zenith-blue: #CDB4FF;
-
-
-  /* Text */
-
-  --zenith-text: #1E1B36;
-
-  --zenith-muted: #8E88A8;
-
-
-  /* Effects */
-
-  --zenith-shadow:
-  0 10px 30px rgba(120,90,180,0.08);
-
-
-  --zenith-radius: 24px;
-
+﻿:root {
+  --z-app: #f8f7ff;
+  --z-glow: #f3e7ff;
+  --z-surface: #ffffff;
+  --z-surface-raised: #fffefe;
+  --z-surface-muted: #f6f2ff;
+  --z-editor: #fffefe;
+  --z-text: #27213f;
+  --z-text-secondary: #5f5874;
+  --z-muted: #948ba6;
+  --z-border: #e9e2f4;
+  --z-border-strong: #dcd1ed;
+  --z-accent: #8769df;
+  --z-accent-hover: #6f51c6;
+  --z-accent-soft: #eee7ff;
+  --z-accent-warm: #ef9bc7;
+  --z-selection: #e4d8ff;
+  --z-hover: #f3eeff;
+  --z-terminal: #1c1932;
+  --z-terminal-text: #eae5ff;
+  --z-status: #f4f0fb;
+  --z-success: #4f9b73;
+  --z-danger: #cf5e7f;
+  --z-shadow: 0 10px 28px color-mix(in srgb, var(--z-text) 8%, transparent);
+  --z-radius: 14px;
 }

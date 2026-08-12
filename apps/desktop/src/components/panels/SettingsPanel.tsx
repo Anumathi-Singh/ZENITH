@@ -1,9 +1,10 @@
-﻿import { Eye, Moon, Palette, Sun, Type } from "lucide-react";
+﻿import { ExternalLink, Palette } from "lucide-react";
 import { useTheme } from "../theme/useTheme";
-import { useEditorPreferences } from "../editor/editorPreferences";
+import { themeEntries } from "../theme/themes";
+import { useUiStore } from "../ui/uiStore";
 
 export default function SettingsPanel() {
   const { themeName, setTheme } = useTheme();
-  const { fontSize, minimap, wordWrap, setFontSize, toggleMinimap, toggleWordWrap } = useEditorPreferences();
-  return <section className="zenith-side-panel"><header className="panel-header"><div><p className="eyebrow">SETTINGS</p><h2>Appearance</h2></div><Palette size={19} /></header><p className="setting-copy">Tune Zenith to fit the way you work.</p><div className="theme-options"><button className={themeName === "light" ? "selected" : ""} onClick={() => setTheme("light")}><Sun size={18} />Light <span /></button><button className={themeName === "dark" ? "selected" : ""} onClick={() => setTheme("dark")}><Moon size={18} />Midnight <span /></button></div><div className="settings-group"><label><Type size={15} /> Editor font size <b>{fontSize}px</b></label><input type="range" min="12" max="22" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} /><button className="setting-toggle" onClick={toggleMinimap}><Eye size={16} /> Show minimap <span className={minimap ? "on" : ""} /></button><button className="setting-toggle" onClick={toggleWordWrap}>↪ Word wrap <span className={wordWrap ? "on" : ""} /></button></div></section>;
+  const openSettings = useUiStore((state) => state.openSettings);
+  return <section className="zenith-side-panel"><header className="panel-header"><div><p className="eyebrow">PREFERENCES</p><h2>Quick Settings</h2></div><Palette size={18} /></header><p className="setting-copy">Quickly switch the Zenith theme or open the full settings workspace.</p><div className="settings-group theme-setting"><label>Theme<select value={themeName} onChange={(event) => setTheme(event.target.value as typeof themeName)}>{themeEntries.map(([name, theme]) => <option key={name} value={name}>{theme.label}</option>)}</select></label></div><button className="secondary-action side-settings-link" onClick={() => openSettings()}><ExternalLink size={14} />Open full Settings</button></section>;
 }

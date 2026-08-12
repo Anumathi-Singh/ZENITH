@@ -1,22 +1,16 @@
-import { useState } from "react";
-import { Bot, Boxes, FileCode2, GitBranch, Search, Settings, Sparkles } from "lucide-react";
+﻿import { Bot, FileCode2, GitBranch, Puzzle, Search, Settings, Sparkles } from "lucide-react";
 import { useLayoutStore, type PanelType } from "./layoutStore";
+import { useUiStore } from "../ui/uiStore";
 
-const items: { icon: typeof FileCode2; name: string; panel: Exclude<PanelType, null> }[] = [
+const panelItems: { icon: typeof FileCode2; name: string; panel: Exclude<PanelType, null> }[] = [
   { icon: FileCode2, name: "Explorer", panel: "explorer" },
   { icon: Search, name: "Search", panel: "search" },
   { icon: GitBranch, name: "Source Control", panel: "git" },
-  { icon: Sparkles, name: "Zenith AI", panel: "nova" },
-  { icon: Bot, name: "Agents", panel: "nova" },
-  { icon: Boxes, name: "Extensions", panel: "settings" },
+  { icon: Puzzle, name: "Extensions", panel: "extensions" },
 ];
 
 export default function ActivityBar() {
-  const { activePanel, togglePanel } = useLayoutStore();
-  const [notice, setNotice] = useState("");
-  const activate = (panel: Exclude<PanelType, null>) => {
-    if (panel === "nova") { togglePanel("nova"); setNotice("Zenith AI toggled"); return; }
-    togglePanel(panel);
-  };
-  return <aside className="activity-bar"><div className="activity-main">{items.map(({ icon: Icon, name, panel }) => <button key={name} title={name} aria-label={name} onClick={() => activate(panel)} className={`activity-button ${activePanel === panel && panel !== "nova" ? "active" : ""}`}><Icon size={21} /></button>)}</div><div className="activity-bottom"><button className="activity-button" title="Settings" onClick={() => togglePanel("settings")}><Settings size={21} /></button><div className="avatar">A</div>{notice && <span className="sr-only">{notice}</span>}</div></aside>;
+  const { activePanel, togglePanel, aiPanelOpen, toggleAIPanel } = useLayoutStore();
+  const { openSettings, openDialog } = useUiStore();
+  return <aside className="activity-bar" aria-label="Workspace tools"><div className="activity-main">{panelItems.map(({ icon: Icon, name, panel }) => <button key={name} title={name} aria-label={name} aria-pressed={activePanel === panel} onClick={() => togglePanel(panel)} className={`activity-button ${activePanel === panel ? "active" : ""}`}><Icon size={20} /></button>)}<span className="activity-divider" /><button title="Toggle Zenith AI" aria-label="Toggle Zenith AI" aria-pressed={aiPanelOpen} onClick={toggleAIPanel} className={`activity-button activity-ai ${aiPanelOpen ? "active" : ""}`}><Sparkles size={20} /></button></div><div className="activity-bottom"><button className="activity-button" title="Settings" aria-label="Settings" onClick={() => openSettings()}><Settings size={20} /></button><button className="activity-avatar" title="Zenith profile" aria-label="Zenith profile" onClick={() => openDialog("auth", "signin")}><Bot size={15} /></button></div></aside>;
 }
