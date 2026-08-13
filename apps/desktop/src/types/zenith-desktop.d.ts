@@ -1,6 +1,33 @@
 ﻿export interface ZenithDirectoryEntry { name: string; path: string; type: "file" | "folder"; }
 export interface ZenithTerminalProfile { id: string; label: string; shell: string; }
 export interface ZenithTerminalSession { id: string; cwd: string; profileId: string; profileLabel: string; shell: string; }
+export type ZenithBackendResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
+export type ZenithGitChangeKind = "modified" | "added" | "deleted" | "renamed" | "copied" | "untracked" | "conflicted";
+export interface ZenithGitChange { path: string; oldPath?: string; kind: ZenithGitChangeKind; staged: boolean; indexStatus: string; workingTreeStatus: string; }
+export interface ZenithGitBranch { name: string | null; detached: boolean; upstream: string | null; ahead: number; behind: number; oid: string | null; }
+export interface ZenithGitStatus { repositoryRoot: string; branch: ZenithGitBranch; staged: ZenithGitChange[]; unstaged: ZenithGitChange[]; untracked: ZenithGitChange[]; conflicts: ZenithGitChange[]; clean: boolean; }
+export interface ZenithGitStatusResponse { available: boolean; version: string | null; isRepository: boolean; status: ZenithGitStatus | null; }
+export interface ZenithGitRemote { name: string; fetchUrl: string; pushUrl: string; }
+export interface ZenithGitCommit { hash: string; shortHash: string; author: string; email: string; date: string; subject: string; parents: string[]; }
+export interface ZenithGitApi {
+  getVersion: () => Promise<ZenithBackendResult<{ available: boolean; version: string | null }>>;
+  getStatus: () => Promise<ZenithBackendResult<ZenithGitStatusResponse>>;
+  stage: (paths: string[]) => Promise<ZenithBackendResult<void>>;
+  unstage: (paths: string[]) => Promise<ZenithBackendResult<void>>;
+  stageAll: () => Promise<ZenithBackendResult<void>>;
+  unstageAll: () => Promise<ZenithBackendResult<void>>;
+  commit: (message: string) => Promise<ZenithBackendResult<{ shortHash: string | null; message: string }>>;
+  fetch: () => Promise<ZenithBackendResult<void>>;
+  pull: () => Promise<ZenithBackendResult<void>>;
+  push: () => Promise<ZenithBackendResult<void>>;
+  listBranches: () => Promise<ZenithBackendResult<Array<{ name: string; current: boolean }>>>;
+  checkoutBranch: (name: string) => Promise<ZenithBackendResult<void>>;
+  createBranch: (name: string) => Promise<ZenithBackendResult<void>>;
+  getRemotes: () => Promise<ZenithBackendResult<ZenithGitRemote[]>>;
+  getHistory: (limit?: number, skip?: number) => Promise<ZenithBackendResult<ZenithGitCommit[]>>;
+  init: () => Promise<ZenithBackendResult<{ repositoryRoot: string }>>;
+  onStatusChanged: (listener: () => void) => () => void;
+}
 export interface ZenithDesktopApi {
   selectFolder: () => Promise<{ path: string; name: string } | null>;
   readDirectory: (directoryPath: string) => Promise<ZenithDirectoryEntry[]>;
@@ -14,6 +41,7 @@ export interface ZenithDesktopApi {
   terminalInput: (id: string, data: string) => Promise<void>;
   terminalResize: (id: string, cols: number, rows: number) => Promise<void>;
   killTerminal: (id: string) => Promise<void>;
+  git: ZenithGitApi;
   minimizeWindow: () => Promise<void>;
   toggleMaximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;

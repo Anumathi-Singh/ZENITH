@@ -4,6 +4,8 @@ import { useEditorPreferences } from "../editor/editorPreferences";
 import { useUiStore } from "../ui/uiStore";
 import { useAppPreferences } from "./appPreferences";
 import ThemeBrowser from "./ThemeBrowser";
+import { useLayoutStore } from "../layout/layoutStore";
+import { useGitStore } from "../panels/gitStore";
 
 const sections = [
   ["General", MonitorCog], ["Appearance", Palette], ["Workbench", LayoutPanelTop], ["Editor", Code2],
@@ -21,6 +23,9 @@ function SelectRow({ label, value, options, onChange }: { label: string; value: 
 export default function SettingsView() {
   const { fontSize, minimap, wordWrap, setFontSize, setMinimap, setWordWrap } = useEditorPreferences();
   const { settingsCategory, setSettingsCategory, closeSettings, openDialog } = useUiStore();
+  const setActivePanel = useLayoutStore((state) => state.setActivePanel);
+  const gitAvailable = useGitStore((state) => state.available);
+  const isGitRepository = useGitStore((state) => state.isRepository);
   const preferences = useAppPreferences();
   const [installedTerminalProfiles, setInstalledTerminalProfiles] = useState<string[]>([]);
   useEffect(() => {
@@ -41,7 +46,7 @@ export default function SettingsView() {
     case "Terminal": content = <><p className="settings-lead">Zenith discovers terminal profiles installed on this computer.</p><SelectRow label="Default terminal profile" value={preferences.defaultTerminalProfile || "System default"} options={terminalProfileOptions} onChange={(value) => preferences.setPreference("defaultTerminalProfile", value === "System default" ? "" : value)} /><Toggle label="Copy on selection" description="Copy selected terminal text when the terminal supports it." checked={preferences.copyOnSelection} onChange={(value) => preferences.setPreference("copyOnSelection", value)} /></>; break;
     case "AI": content = <><p className="settings-lead">Zenith AI remains a local interface until a model service is connected.</p><Toggle label="Show Zenith AI at startup" description="Open the independent right AI panel when Zenith starts." checked={preferences.showAiOnStartup} onChange={(value) => preferences.setPreference("showAiOnStartup", value)} /><SelectRow label="Default AI teammate" value={preferences.defaultAgent} options={["Planner", "Coder", "Reviewer", "Tester", "Docs"]} onChange={(value) => preferences.setPreference("defaultAgent", value as typeof preferences.defaultAgent)} /></>; break;
     case "GitHub & Accounts": content = <><p className="settings-lead">These connection surfaces are ready; authentication services remain intentionally disconnected.</p><button className="settings-action" onClick={() => openDialog("auth", "signin")}><CircleUserRound size={17} />Sign in to Zenith <small>Not connected</small></button><button className="settings-action" onClick={() => openDialog("github")}><Cloud size={17} />Connect GitHub <small>Not connected</small></button></>; break;
-    case "Source Control": content = <><p className="settings-lead">Git commands appear when Zenith’s local Git service is connected.</p><button className="settings-action" onClick={() => openDialog("repository", "initialize")}><Wrench size={17} />Initialize a repository <small>Not connected</small></button></>; break;
+    case "Source Control": content = <><p className="settings-lead">Native Git operations run locally through Zenith’s secure desktop service.</p><button className="settings-action" onClick={() => { closeSettings(); setActivePanel("git"); }}><Wrench size={17} />Open Source Control <small>{gitAvailable === false ? "Git unavailable" : isGitRepository ? "Repository detected" : "Ready"}</small></button></>; break;
     case "Keyboard Shortcuts": content = <><p className="settings-lead">Browse the core local commands available in Zenith.</p><button className="settings-action" onClick={() => openDialog("shortcuts")}><Keyboard size={17} />Open Keyboard Shortcuts</button></>; break;
     case "Accessibility": content = <><p className="settings-lead">Keep every surface readable and comfortable.</p><Toggle label="Reduce motion" description="Remove non-essential animation." checked={preferences.reducedMotion} onChange={(value) => preferences.setPreference("reducedMotion", value)} /><SelectRow label="Interface density" value={preferences.density} options={["comfortable", "compact"]} onChange={(value) => preferences.setPreference("density", value as typeof preferences.density)} /></>; break;
     case "Privacy": content = <><p className="settings-lead">These preferences remain local to this desktop app.</p><Toggle label="Anonymous diagnostics" description="Allow diagnostics when a service is connected." checked={preferences.anonymousDiagnostics} onChange={(value) => preferences.setPreference("anonymousDiagnostics", value)} /><Toggle label="Crash reports" description="Allow crash reports when a service is connected." checked={preferences.crashReports} onChange={(value) => preferences.setPreference("crashReports", value)} /></>; break;

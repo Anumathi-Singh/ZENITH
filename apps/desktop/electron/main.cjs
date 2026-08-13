@@ -5,23 +5,23 @@ const os = require("node:os");
 const path = require("node:path");
 const childProcess = require("node:child_process");
 const pty = require("node-pty");
+const { asBackendResult } = require("./services/backend-result.cjs");
+const { GitService } = require("./services/git-service.cjs");
+const { WorkspaceService } = require("./services/workspace-service.cjs");
 
 let mainWindow;
-let workspaceRoot = null;
+const workspaceService = new WorkspaceService();
+const gitService = new GitService(workspaceService);
 const terminals = new Map();
 const ignoredNames = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
 const maxFileBytes = 2 * 1024 * 1024;
 
 function assertWorkspacePath(candidate) {
-  if (!workspaceRoot) throw new Error("No workspace is open.");
-  const resolved = path.resolve(candidate);
-  const relative = path.relative(workspaceRoot, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Path is outside the selected workspace.");
-  return resolved;
+  return workspaceService.assertPath(candidate);
 }
 
 async function readDirectory(directoryPath) {
-  const resolved = assertWorkspacePath(directoryPath);
+  const resolved = await workspaceService.assertExistingPath(directoryPath);
   const entries = await fs.readdir(resolved, { withFileTypes: true });
   return entries
     .filter((entry) => !ignoredNames.has(entry.name) && !entry.name.startsWith("."))
@@ -106,6 +106,22 @@ function killAllTerminals() {
   for (const id of terminals.keys()) killTerminal(id);
 }
 
+let gitRefreshTimer;
+function notifyGitStatusChanged() {
+  clearTimeout(gitRefreshTimer);
+  gitRefreshTimer = setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:git-status-changed");
+  }, 180);
+}
+
+function gitHandler(channel, operation, fallbackCode = "GIT_OPERATION_FAILED") {
+  ipcMain.handle(channel, (_event, ...args) => asBackendResult(async () => {
+    const data = await operation(...args);
+    if (channel !== "zenith:git-status" && channel !== "zenith:git-version" && channel !== "zenith:git-branches" && channel !== "zenith:git-remotes" && channel !== "zenith:git-history") notifyGitStatusChanged();
+    return data;
+  }, fallbackCode));
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: "Zenith",
@@ -126,29 +142,31 @@ app.whenReady().then(() => {
   ipcMain.handle("zenith:select-folder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     if (result.canceled || !result.filePaths[0]) return null;
-    workspaceRoot = path.resolve(result.filePaths[0]);
-    return { path: workspaceRoot, name: path.basename(workspaceRoot) };
+    const workspace = await workspaceService.open(result.filePaths[0]);
+    notifyGitStatusChanged();
+    return workspace;
   });
   ipcMain.handle("zenith:read-directory", async (_event, directoryPath) => readDirectory(directoryPath));
-  ipcMain.handle("zenith:close-folder", () => { workspaceRoot = null; });
+  ipcMain.handle("zenith:close-folder", () => { workspaceService.close(); notifyGitStatusChanged(); });
   ipcMain.handle("zenith:read-file", async (_event, filePath) => {
-    const resolved = assertWorkspacePath(filePath);
+    const resolved = await workspaceService.assertExistingPath(filePath);
     const info = await fs.stat(resolved);
     if (!info.isFile()) throw new Error("Requested path is not a file.");
     if (info.size > maxFileBytes) throw new Error("File is too large to open in Zenith.");
     return fs.readFile(resolved, "utf8");
   });
   ipcMain.handle("zenith:write-file", async (_event, filePath, content) => {
-    const resolved = assertWorkspacePath(filePath);
+    const resolved = await workspaceService.assertExistingPath(filePath);
     await fs.writeFile(resolved, content, "utf8");
+    notifyGitStatusChanged();
   });
-  ipcMain.handle("zenith:reveal-path", (_event, candidate) => { shell.showItemInFolder(assertWorkspacePath(candidate)); });
+  ipcMain.handle("zenith:reveal-path", async (_event, candidate) => { shell.showItemInFolder(await workspaceService.assertExistingPath(candidate)); });
   ipcMain.handle("zenith:copy-text", (_event, text) => { clipboard.writeText(String(text ?? "")); });
   ipcMain.handle("zenith:terminal-profiles", () => terminalProfiles().map(publicProfile));
   ipcMain.handle("zenith:terminal-create", (event, profileId) => {
     const id = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const profile = resolveProfile(profileId);
-    const cwd = workspaceRoot || os.homedir();
+    const cwd = workspaceService.getRoot() || os.homedir();
     try {
       const ptyProcess = pty.spawn(profile.executable, profile.args, {
         name: "xterm-256color",
@@ -183,11 +201,27 @@ app.whenReady().then(() => {
   ipcMain.handle("zenith:window-minimize", () => mainWindow?.minimize());
   ipcMain.handle("zenith:window-toggle-maximize", () => { if (!mainWindow) return; if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize(); });
   ipcMain.handle("zenith:window-close", () => mainWindow?.close());
+  gitHandler("zenith:git-version", () => gitService.getVersion(), "GIT_UNAVAILABLE");
+  gitHandler("zenith:git-status", () => gitService.status());
+  gitHandler("zenith:git-stage", (paths) => gitService.stage(Array.isArray(paths) ? paths : []));
+  gitHandler("zenith:git-unstage", (paths) => gitService.unstage(Array.isArray(paths) ? paths : []));
+  gitHandler("zenith:git-stage-all", () => gitService.stageAll());
+  gitHandler("zenith:git-unstage-all", () => gitService.unstageAll());
+  gitHandler("zenith:git-commit", (message) => gitService.commit(message));
+  gitHandler("zenith:git-fetch", () => gitService.fetch());
+  gitHandler("zenith:git-pull", () => gitService.pull());
+  gitHandler("zenith:git-push", () => gitService.push());
+  gitHandler("zenith:git-branches", () => gitService.branches());
+  gitHandler("zenith:git-checkout-branch", (name) => gitService.checkoutBranch(name));
+  gitHandler("zenith:git-create-branch", (name) => gitService.createBranch(name));
+  gitHandler("zenith:git-remotes", () => gitService.remotes());
+  gitHandler("zenith:git-history", (limit, skip) => gitService.history(limit, skip));
+  gitHandler("zenith:git-init", () => gitService.init());
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on("before-quit", killAllTerminals);
+app.on("before-quit", () => { clearTimeout(gitRefreshTimer); killAllTerminals(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
 
