@@ -142,7 +142,10 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
 
   useEffect(() => { sessions.forEach(attachTerminal); }, [sessions, attachTerminal]);
   useEffect(() => {
-    views.current.forEach((view) => { view.terminal.options.theme = xtermTheme; });
+    views.current.forEach((view) => {
+      view.terminal.options.theme = xtermTheme;
+      if (view.terminal.rows > 0) view.terminal.refresh(0, view.terminal.rows - 1);
+    });
   }, [xtermTheme]);
   useEffect(() => {
     if (activeId && !collapsed) requestAnimationFrame(() => {
@@ -168,7 +171,7 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
   const terminalStyle = maximized ? undefined : { height: collapsed ? 44 : height };
 
   return (
-    <section className={`terminal-panel ${collapsed ? "is-collapsed" : ""} ${maximized ? "is-maximized" : ""}`} style={terminalStyle}>
+    <section className={`terminal-panel ${collapsed ? "is-collapsed" : ""} ${maximized ? "is-maximized" : ""} ${profileMenuOpen ? "has-open-profile-menu" : ""}`} style={terminalStyle}>
       <header className="terminal-header">
         <button className="terminal-title" title={collapsed ? "Expand terminal" : "Collapse terminal"} onClick={onToggleCollapsed}><TerminalSquare size={17} /><strong>Terminal</strong>{collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button>
         {!collapsed && <div className="terminal-session-tabs" role="tablist">{sessions.map((session, index) => <button key={session.id} className={session.id === activeId ? "active" : ""} role="tab" aria-selected={session.id === activeId} onClick={() => setActiveId(session.id)}>Terminal {index + 1}<small>{session.profileLabel}</small>{session.exited && <span>ended</span>}</button>)}</div>}

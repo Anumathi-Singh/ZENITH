@@ -1,24 +1,53 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { cssVariablesForTheme, fallbackThemeName, isThemeName, themeRegistry, type ThemeName } from "./themes";
-import { ThemeContext } from "./ThemeContext";
+import { getQuickToggleTarget, ThemeContext } from "./ThemeContext";
 import { notify } from "../ui/uiStore";
 
 interface Props { children: ReactNode; }
-const themeStorageKey = "zenith-theme";
-const lightStorageKey = "zenith-light-theme";
-const darkStorageKey = "zenith-dark-theme";
-const readTheme = (key: string, fallback: ThemeName): ThemeName => {
-  try { const value = localStorage.getItem(key); return isThemeName(value) ? value : fallback; }
-  catch { return fallback; }
+interface ThemePreferences {
+  selectedThemeId: ThemeName;
+  preferredLightThemeId: ThemeName;
+  preferredDarkThemeId: ThemeName;
+}
+
+const preferencesStorageKey = "zenith-theme-preferences-v1";
+const legacyStorageKeys = { selected: "zenith-theme", light: "zenith-light-theme", dark: "zenith-dark-theme" } as const;
+const defaultPreferences: ThemePreferences = {
+  selectedThemeId: fallbackThemeName,
+  preferredLightThemeId: "light",
+  preferredDarkThemeId: "dark",
 };
+const isAppearanceTheme = (value: unknown, appearance: "light" | "dark"): value is ThemeName =>
+  typeof value === "string" && isThemeName(value) && themeRegistry[value].appearanceMode === appearance;
+
+function readStoredPreferences(): ThemePreferences {
+  try {
+    const stored = localStorage.getItem(preferencesStorageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Partial<ThemePreferences>;
+      return {
+        selectedThemeId: isThemeName(parsed.selectedThemeId) ? parsed.selectedThemeId : defaultPreferences.selectedThemeId,
+        preferredLightThemeId: isAppearanceTheme(parsed.preferredLightThemeId, "light") ? parsed.preferredLightThemeId : defaultPreferences.preferredLightThemeId,
+        preferredDarkThemeId: isAppearanceTheme(parsed.preferredDarkThemeId, "dark") ? parsed.preferredDarkThemeId : defaultPreferences.preferredDarkThemeId,
+      };
+    }
+    const legacySelected = localStorage.getItem(legacyStorageKeys.selected);
+    const legacyLight = localStorage.getItem(legacyStorageKeys.light);
+    const legacyDark = localStorage.getItem(legacyStorageKeys.dark);
+    return {
+      selectedThemeId: isThemeName(legacySelected) ? legacySelected : defaultPreferences.selectedThemeId,
+      preferredLightThemeId: isAppearanceTheme(legacyLight, "light") ? legacyLight : defaultPreferences.preferredLightThemeId,
+      preferredDarkThemeId: isAppearanceTheme(legacyDark, "dark") ? legacyDark : defaultPreferences.preferredDarkThemeId,
+    };
+  } catch {
+    return defaultPreferences;
+  }
+}
 
 export default function ThemeProvider({ children }: Props) {
-  const [appliedThemeName, setAppliedThemeName] = useState<ThemeName>(() => readTheme(themeStorageKey, fallbackThemeName));
-  const [previewThemeName, setPreviewThemeName] = useState<ThemeName | null>(null);
-  const [lightThemeName, setLightThemeName] = useState<ThemeName>(() => readTheme(lightStorageKey, "light"));
-  const [darkThemeName, setDarkThemeName] = useState<ThemeName>(() => readTheme(darkStorageKey, "dark"));
-  const themeName = previewThemeName ?? appliedThemeName;
-  const theme = themeRegistry[themeName] ?? themeRegistry[fallbackThemeName];
+  const [preferences, setPreferences] = useState<ThemePreferences>(readStoredPreferences);
+  const { selectedThemeId, preferredLightThemeId, preferredDarkThemeId } = preferences;
+  const theme = themeRegistry[selectedThemeId] ?? themeRegistry[fallbackThemeName];
 
   useEffect(() => {
     const root = document.documentElement;
@@ -28,25 +57,33 @@ export default function ThemeProvider({ children }: Props) {
     Object.entries(cssVariablesForTheme(theme)).forEach(([token, value]) => root.style.setProperty(token, value));
   }, [theme]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(preferencesStorageKey, JSON.stringify(preferences));
+      Object.values(legacyStorageKeys).forEach((key) => localStorage.removeItem(key));
+    } catch { /* persistence is optional */ }
+  }, [preferences]);
+
   const setTheme = useCallback((name: ThemeName) => {
     const next = themeRegistry[name] ? name : fallbackThemeName;
-    setAppliedThemeName(next); setPreviewThemeName(null);
-    try { localStorage.setItem(themeStorageKey, next); } catch { /* persistence is optional */ }
+    if (next === selectedThemeId) return;
+    setPreferences((current) => ({ ...current, selectedThemeId: next }));
     notify(`${themeRegistry[next].label} applied.`, "success");
-  }, []);
-  const previewTheme = useCallback((name: ThemeName) => { if (themeRegistry[name]) setPreviewThemeName(name); }, []);
-  const clearPreview = useCallback(() => setPreviewThemeName(null), []);
-  const setPreferredTheme = useCallback((mode: "light" | "dark", name: ThemeName) => {
-    if (!themeRegistry[name]) return;
-    if (mode === "light") { setLightThemeName(name); try { localStorage.setItem(lightStorageKey, name); } catch { /* optional */ } }
-    else { setDarkThemeName(name); try { localStorage.setItem(darkStorageKey, name); } catch { /* optional */ } }
-    notify(`${themeRegistry[name].label} set as your ${mode} preference.`, "success");
-  }, []);
-  const toggleTheme = useCallback(() => {
-    const active = themeRegistry[previewThemeName ?? appliedThemeName] ?? themeRegistry[fallbackThemeName];
-    setTheme(active.appearanceMode === "light" || (active.appearanceMode === "mixed" && active.monaco.mode === "light") ? darkThemeName : lightThemeName);
-  }, [appliedThemeName, darkThemeName, lightThemeName, previewThemeName, setTheme]);
+  }, [selectedThemeId]);
+  const setPreferredLightTheme = useCallback((name: ThemeName) => {
+    if (!isAppearanceTheme(name, "light") || name === preferredLightThemeId) return;
+    setPreferences((current) => ({ ...current, preferredLightThemeId: name }));
+    notify(`${themeRegistry[name].label} set as your light preference.`, "success");
+  }, [preferredLightThemeId]);
+  const setPreferredDarkTheme = useCallback((name: ThemeName) => {
+    if (!isAppearanceTheme(name, "dark") || name === preferredDarkThemeId) return;
+    setPreferences((current) => ({ ...current, preferredDarkThemeId: name }));
+    notify(`${themeRegistry[name].label} set as your dark preference.`, "success");
+  }, [preferredDarkThemeId]);
+  const toggleAppearance = useCallback(() => {
+    setTheme(getQuickToggleTarget(theme) === "dark" ? preferredDarkThemeId : preferredLightThemeId);
+  }, [preferredDarkThemeId, preferredLightThemeId, setTheme, theme]);
 
-  const value = useMemo(() => ({ themeName, appliedThemeName, previewThemeName, theme, lightThemeName, darkThemeName, toggleTheme, setTheme, previewTheme, clearPreview, setPreferredTheme }), [appliedThemeName, clearPreview, darkThemeName, lightThemeName, previewTheme, previewThemeName, setPreferredTheme, setTheme, theme, themeName, toggleTheme]);
+  const value = useMemo(() => ({ selectedThemeId, theme, preferredLightThemeId, preferredDarkThemeId, toggleAppearance, setTheme, setPreferredLightTheme, setPreferredDarkTheme }), [preferredDarkThemeId, preferredLightThemeId, selectedThemeId, setPreferredDarkTheme, setPreferredLightTheme, setTheme, theme, toggleAppearance]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

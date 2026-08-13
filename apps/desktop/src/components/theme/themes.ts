@@ -26,6 +26,7 @@ interface SurfaceSeed {
 
 interface ThemeSeed {
   id: ThemeName; label: string; description: string; appearanceMode: AppearanceMode;
+  preferredQuickToggleTarget?: "light" | "dark";
   editorMode: "light" | "dark"; tags: ThemeCategory[];
   decoration: { style: DecorationStyle; density: "none" | "subtle" | "balanced"; color: string; secondary: string };
   base: {
@@ -60,6 +61,7 @@ export interface AgentThemeTokens { orchestrator: string; planner: string; coder
 
 export interface ZenithTheme {
   id: ThemeName; label: string; description: string; appearanceMode: AppearanceMode;
+  preferredQuickToggleTarget?: "light" | "dark";
   tags: ThemeCategory[]; decoration: ThemeSeed["decoration"];
   background: ThemeBackground;
   global: { appBackground: string; backgroundGlow: string; textPrimary: string; textSecondary: string; textMuted: string; border: string; borderStrong: string; shadow: string; focusRing: string; success: string; warning: string; danger: string; info: string };
@@ -113,6 +115,7 @@ function buildTheme(seed: ThemeSeed): ZenithTheme {
   };
   return {
     id: seed.id, label: seed.label, description: seed.description, appearanceMode: seed.appearanceMode,
+    preferredQuickToggleTarget: seed.preferredQuickToggleTarget,
     tags: seed.tags, decoration: seed.decoration, background: backgroundCompositions[seed.id],
     global: { appBackground: seed.base.app, backgroundGlow: seed.base.glow, textPrimary: seed.base.text, textSecondary: seed.base.textSecondary, textMuted: seed.base.muted, border: seed.base.border, borderStrong: seed.base.borderStrong, shadow: seed.base.shadow, focusRing: seed.base.focus, success: seed.base.success, warning: seed.base.warning, danger: seed.base.danger, info: seed.base.info },
     accent: seed.accents,

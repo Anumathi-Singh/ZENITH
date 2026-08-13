@@ -1,6 +1,5 @@
 import { Accessibility, Bot, CircleUserRound, Cloud, Code2, Eye, FolderCog, Keyboard, LayoutPanelTop, MonitorCog, Palette, ShieldCheck, Sparkles, TerminalSquare, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useTheme } from "../theme/useTheme";
 import { useEditorPreferences } from "../editor/editorPreferences";
 import { useUiStore } from "../ui/uiStore";
 import { useAppPreferences } from "./appPreferences";
@@ -20,7 +19,6 @@ function SelectRow({ label, value, options, onChange }: { label: string; value: 
 }
 
 export default function SettingsView() {
-  const { clearPreview } = useTheme();
   const { fontSize, minimap, wordWrap, setFontSize, setMinimap, setWordWrap } = useEditorPreferences();
   const { settingsCategory, setSettingsCategory, closeSettings, openDialog } = useUiStore();
   const preferences = useAppPreferences();
@@ -34,7 +32,7 @@ export default function SettingsView() {
   }, []);
   const terminalProfileOptions = ["System default", ...installedTerminalProfiles];
   if (preferences.defaultTerminalProfile && !terminalProfileOptions.includes(preferences.defaultTerminalProfile)) terminalProfileOptions.push(preferences.defaultTerminalProfile);
-  const close = () => { clearPreview(); closeSettings(); };
+  const close = () => closeSettings();
   let content: React.ReactNode;
   switch (settingsCategory) {
     case "Appearance": content = <><ThemeBrowser /><div className="appearance-options"><Toggle label="Panel transparency" description="Use a restrained translucent finish on supported surfaces." checked={preferences.panelTransparency} onChange={(value) => preferences.setPreference("panelTransparency", value)} /><Toggle label="Interface animations" description="Use short transitions for menus, surfaces, and theme changes." checked={preferences.animations} onChange={(value) => preferences.setPreference("animations", value)} /><Toggle label="Reduce motion" description="Disable non-essential motion across the interface." checked={preferences.reducedMotion} onChange={(value) => preferences.setPreference("reducedMotion", value)} /></div></> ; break;

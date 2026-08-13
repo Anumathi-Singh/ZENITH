@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo } from "react";
+import { useRef } from "react";
 import Editor from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { useEditorStore } from "./editorStore";
@@ -55,10 +56,15 @@ function defineZenithThemes(monaco: typeof Monaco) {
 
 export default function MonacoEditor() {
   const { tabs, activeTab, updateContent, saveTab } = useEditorStore();
-  const { themeName } = useTheme();
+  const { selectedThemeId } = useTheme();
   const { fontSize, minimap, wordWrap } = useEditorPreferences();
   const openFolder = useWorkspaceStore((state) => state.openFolder);
   const currentTab = tabs.find((tab) => tab.id === activeTab);
+  const monacoRef = useRef<typeof Monaco | null>(null);
+
+  useEffect(() => {
+    monacoRef.current?.editor.setTheme(`zenith-${selectedThemeId}`);
+  }, [selectedThemeId]);
 
   useEffect(() => {
     const saveHandler = (event: KeyboardEvent) => {
@@ -96,8 +102,12 @@ export default function MonacoEditor() {
       path={currentTab.path ?? currentTab.id}
       language={currentTab.language}
       value={currentTab.content}
-      theme={`zenith-${themeName}`}
+      theme={`zenith-${selectedThemeId}`}
       beforeMount={defineZenithThemes}
+      onMount={(_editor, monaco) => {
+        monacoRef.current = monaco;
+        monaco.editor.setTheme(`zenith-${selectedThemeId}`);
+      }}
       onChange={(value) => updateContent(currentTab.id, value ?? "")}
       options={options}
       keepCurrentModel

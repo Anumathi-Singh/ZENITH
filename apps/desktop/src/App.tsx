@@ -16,7 +16,7 @@ function App() {
   const [terminalHeight, setTerminalHeight] = useState(220);
   const [terminalCollapsed, setTerminalCollapsed] = useState(false);
   const [terminalMaximized, setTerminalMaximized] = useState(false);
-  const { themeName, clearPreview } = useTheme();
+  const { selectedThemeId } = useTheme();
   const { density, animations, reducedMotion, panelBorders, panelTransparency, showAiOnStartup } = useAppPreferences();
   const setAIPanelOpen = useLayoutStore((state) => state.setAIPanelOpen);
   const { settingsOpen, closeSettings } = useUiStore();
@@ -29,7 +29,6 @@ function App() {
   useEffect(() => { setAIPanelOpen(showAiOnStartup); }, [setAIPanelOpen, showAiOnStartup]);
   const toggleTerminal = () => { setTerminalMaximized(false); setTerminalCollapsed((value) => !value); };
   const toggleMaximizedTerminal = () => { setTerminalCollapsed(false); setTerminalMaximized((value) => !value); };
-  const dismissSettings = () => { clearPreview(); closeSettings(); };
-  return <div className={`zenith-app theme-${themeName}`}><TopBar onToggleTerminal={toggleTerminal} terminalCollapsed={terminalCollapsed} />{!terminalMaximized && <div className="workspace-wrap"><Workspace /></div>}{!terminalMaximized && !terminalCollapsed && <ResizeHandle onResize={setTerminalHeight} />}<Terminal height={terminalHeight} collapsed={terminalCollapsed} maximized={terminalMaximized} onToggleCollapsed={toggleTerminal} onToggleMaximized={toggleMaximizedTerminal} /><StatusBar />{settingsOpen && <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissSettings(); }}><SettingsView /></div>}<ZenithDialogs /><ToastViewport /></div>;
+  return <div className={`zenith-app theme-${selectedThemeId}`}><TopBar onToggleTerminal={toggleTerminal} terminalCollapsed={terminalCollapsed} />{!terminalMaximized && <div className="workspace-wrap"><Workspace /></div>}{!terminalMaximized && !terminalCollapsed && <ResizeHandle onResize={setTerminalHeight} />}<Terminal height={terminalHeight} collapsed={terminalCollapsed} maximized={terminalMaximized} onToggleCollapsed={toggleTerminal} onToggleMaximized={toggleMaximizedTerminal} /><StatusBar />{settingsOpen && <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSettings(); }}><SettingsView /></div>}<ZenithDialogs /><ToastViewport /></div>;
 }
 export default App;
