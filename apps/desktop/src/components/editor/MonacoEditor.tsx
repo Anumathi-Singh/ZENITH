@@ -55,12 +55,13 @@ function defineZenithThemes(monaco: typeof Monaco) {
 }
 
 export default function MonacoEditor() {
-  const { tabs, activeTab, updateContent, saveTab } = useEditorStore();
+  const { tabs, activeTab, updateContent, saveTab, revealRequest } = useEditorStore();
   const { selectedThemeId } = useTheme();
   const { fontSize, minimap, wordWrap } = useEditorPreferences();
   const openFolder = useWorkspaceStore((state) => state.openFolder);
   const currentTab = tabs.find((tab) => tab.id === activeTab);
   const monacoRef = useRef<typeof Monaco | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   useEffect(() => {
     monacoRef.current?.editor.setTheme(`zenith-${selectedThemeId}`);
@@ -76,6 +77,13 @@ export default function MonacoEditor() {
     window.addEventListener("keydown", saveHandler);
     return () => window.removeEventListener("keydown", saveHandler);
   }, [currentTab, saveTab]);
+
+  useEffect(() => {
+    if (!revealRequest || revealRequest.tabId !== currentTab?.id || !editorRef.current) return;
+    editorRef.current.setPosition({ lineNumber: revealRequest.line, column: revealRequest.column });
+    editorRef.current.revealLineInCenter(revealRequest.line);
+    editorRef.current.focus();
+  }, [currentTab?.id, revealRequest]);
 
   const options = useMemo(() => ({
     automaticLayout: true,
@@ -104,9 +112,16 @@ export default function MonacoEditor() {
       value={currentTab.content}
       theme={`zenith-${selectedThemeId}`}
       beforeMount={defineZenithThemes}
-      onMount={(_editor, monaco) => {
+      onMount={(editor, monaco) => {
+        editorRef.current = editor;
         monacoRef.current = monaco;
         monaco.editor.setTheme(`zenith-${selectedThemeId}`);
+        const request = useEditorStore.getState().revealRequest;
+        if (request?.tabId === currentTab.id) {
+          editor.setPosition({ lineNumber: request.line, column: request.column });
+          editor.revealLineInCenter(request.line);
+          editor.focus();
+        }
       }}
       onChange={(value) => updateContent(currentTab.id, value ?? "")}
       options={options}

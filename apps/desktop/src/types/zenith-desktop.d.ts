@@ -27,6 +27,14 @@ export interface ZenithGitHubWorkspaceRepository { owner: string; repo: string; 
 export interface ZenithGitHubCloneResult { path: string; name: string; repositoryUrl: string; }
 export interface ZenithGitHubPublishResult { stage: "created" | "remote-added" | "complete"; repository: ZenithGitHubRepository; remoteAdded: boolean; pushed: boolean; error: { code: string; message: string } | null; }
 export interface ZenithGitHubProgress { operation: "clone" | "publish"; stage: string; message: string; }
+export type ZenithWorkspaceIndexStatus = "idle" | "indexing" | "ready" | "error";
+export interface ZenithWorkspaceIndexState { status: ZenithWorkspaceIndexStatus; rootPath: string | null; fileCount: number; version: number; error: string | null; watching: boolean; }
+export interface ZenithWorkspaceFile { path: string; relativePath: string; name: string; extension: string; directory: string; }
+export interface ZenithFileSearchOptions { searchId: string; query: string; limit?: number; }
+export interface ZenithTextSearchOptions extends ZenithFileSearchOptions { caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean; include?: string; exclude?: string; }
+export interface ZenithSearchMatchRange { start: number; end: number; }
+export interface ZenithTextSearchResult { path: string; relativePath: string; line: number; column: number; preview: string; matches: ZenithSearchMatchRange[]; }
+export interface ZenithSearchProgress { searchId: string; processedFiles: number; totalFiles: number; }
 export interface ZenithGitApi {
   getVersion: () => Promise<ZenithBackendResult<{ available: boolean; version: string | null }>>;
   getStatus: () => Promise<ZenithBackendResult<ZenithGitStatusResponse>>;
@@ -66,6 +74,18 @@ export interface ZenithGitHubApi {
   openExternal: (url: string) => Promise<ZenithBackendResult<void>>;
   onProgress: (listener: (progress: ZenithGitHubProgress) => void) => () => void;
 }
+export interface ZenithWorkspaceIndexApi {
+  getState: () => Promise<ZenithBackendResult<ZenithWorkspaceIndexState>>;
+  findFiles: (query: string, options?: { limit?: number }) => Promise<ZenithBackendResult<ZenithWorkspaceFile[]>>;
+  rebuild: () => Promise<ZenithBackendResult<ZenithWorkspaceIndexState>>;
+  onChanged: (listener: (state: ZenithWorkspaceIndexState) => void) => () => void;
+}
+export interface ZenithSearchApi {
+  files: (options: ZenithFileSearchOptions) => Promise<ZenithBackendResult<ZenithWorkspaceFile[]>>;
+  text: (options: ZenithTextSearchOptions) => Promise<ZenithBackendResult<ZenithTextSearchResult[]>>;
+  cancel: (searchId: string) => Promise<ZenithBackendResult<boolean>>;
+  onProgress: (listener: (progress: ZenithSearchProgress) => void) => () => void;
+}
 export interface ZenithDesktopApi {
   selectFolder: () => Promise<{ path: string; name: string } | null>;
   readDirectory: (directoryPath: string) => Promise<ZenithDirectoryEntry[]>;
@@ -82,6 +102,8 @@ export interface ZenithDesktopApi {
   git: ZenithGitApi;
   auth: ZenithAuthApi;
   github: ZenithGitHubApi;
+  workspaceIndex: ZenithWorkspaceIndexApi;
+  search: ZenithSearchApi;
   minimizeWindow: () => Promise<void>;
   toggleMaximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;

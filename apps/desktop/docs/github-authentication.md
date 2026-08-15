@@ -10,19 +10,19 @@ Zenith uses GitHub OAuth **Device Flow** for its desktop connection. GitHub's cu
 4. Open the created OAuth app's settings and enable **Device Flow**.
 5. Copy the OAuth app's **Client ID**. Do not copy or package a client secret.
 
-Set the client ID before starting Zenith:
+For desktop development, create `apps/desktop/.env` (this file is gitignored):
+
+```dotenv
+GITHUB_CLIENT_ID=your_client_id
+```
+
+Then start the desktop app normally:
 
 ```powershell
-$env:GITHUB_CLIENT_ID="your_client_id"
 npm.cmd run desktop:dev
 ```
 
-Command Prompt equivalent:
-
-```bat
-set GITHUB_CLIENT_ID=your_client_id
-npm run desktop:dev
-```
+The Electron main process resolves that file from the desktop application root; it does not depend on the shell's current directory and does not expose the value through the renderer bridge. A process-level `GITHUB_CLIENT_ID` overrides the development file. Packaged production builds do not read a developer `.env`; the same configuration boundary accepts the public Client ID from the packaging environment or a future embedded build value.
 
 After **Continue with GitHub**, Zenith requests a one-time device code, opens `https://github.com/login/device` in the system browser, and polls GitHub from the Electron main process. The device code is shown in the existing GitHub dialog. Denial, expiration, cancellation, and concurrent-flow errors leave Zenith signed out.
 

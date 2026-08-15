@@ -9,7 +9,8 @@ import { useLayoutStore } from "./layoutStore";
 import { notify, useUiStore } from "../ui/uiStore";
 import { useEditorStore } from "../editor/editorStore";
 import { useGitStore } from "../panels/gitStore";
-import { useAuthStore } from "../auth/authStore";
+import { unwrapBackendResult, useAuthStore } from "../auth/authStore";
+import type { ZenithWorkspaceFile } from "../../types/zenith-desktop";
 
 type MenuItem = { label: string; hint?: string; action?: () => void; disabled?: boolean; separator?: boolean };
 interface TopBarProps { onToggleTerminal: () => void; terminalCollapsed: boolean; }
@@ -34,20 +35,28 @@ export default function TopBar({ onToggleTerminal, terminalCollapsed }: TopBarPr
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const [query, setQuery] = useState(""); const [selectedCommand, setSelectedCommand] = useState(0);
+  const [query, setQuery] = useState(""); const [selectedCommand, setSelectedCommand] = useState(0); const [fileMatches, setFileMatches] = useState<ZenithWorkspaceFile[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const quickSearchId = useRef(""); const quickSearchSequence = useRef(0);
   const { theme, toggleAppearance } = useTheme();
   const quickToggleTarget = getQuickToggleTarget(theme);
-  const { rootName, rootPath, openFolder, closeFolder } = useWorkspaceStore();
+  const { rootName, rootPath, openFolder, closeFolder, openFilePath } = useWorkspaceStore();
   const { togglePanel, toggleAIPanel } = useLayoutStore();
   const { openCommandPalette, closeCommandPalette, commandPaletteOpen, openSettings, openDialog, notifications, markNotificationsRead, clearNotifications } = useUiStore();
-  const { activeTab, tabs, saveTab } = useEditorStore();
+  const { activeTab, tabs, saveTab, openTab } = useEditorStore();
   const gitStatus = useGitStore((state) => state.status);
   const projectMenuRef = useDismissableLayer<HTMLDivElement>(projectMenuOpen, () => setProjectMenuOpen(false));
   const accountRef = useDismissableLayer<HTMLDivElement>(accountOpen, () => setAccountOpen(false));
   const notificationRef = useDismissableLayer<HTMLDivElement>(notificationOpen, () => setNotificationOpen(false));
 
   useEffect(() => { if (commandPaletteOpen) window.setTimeout(() => inputRef.current?.focus(), 0); }, [commandPaletteOpen]);
+  useEffect(() => {
+    const api = window.zenithDesktop?.search; const trimmed = query.trim();
+    if (!api || !commandPaletteOpen || !rootPath || !trimmed) { if (quickSearchId.current) void api?.cancel(quickSearchId.current); quickSearchId.current = ""; return; }
+    const searchId = `quick-open-${Date.now()}-${++quickSearchSequence.current}`; const previous = quickSearchId.current; quickSearchId.current = searchId; if (previous) void api.cancel(previous);
+    const timer = window.setTimeout(() => { void api.files({ searchId, query: trimmed, limit: 40 }).then((result) => { if (quickSearchId.current === searchId) setFileMatches(unwrapBackendResult(result)); }).catch(() => { if (quickSearchId.current === searchId) setFileMatches([]); }); }, 140);
+    return () => { window.clearTimeout(timer); void api.cancel(searchId); };
+  }, [commandPaletteOpen, query, rootPath]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const modifier = event.ctrlKey || event.metaKey;
@@ -75,8 +84,17 @@ export default function TopBar({ onToggleTerminal, terminalCollapsed }: TopBarPr
     { label: "Connect GitHub", hint: "Accounts", action: () => openDialog("github") },
   ], [activeTab, closeFolder, onToggleTerminal, openDialog, openFolder, openSettings, rootPath, saveCurrent, terminalCollapsed, toggleAIPanel, togglePanel]);
   const matches = commandActions.filter((command) => command.label.toLowerCase().includes(query.trim().toLowerCase()));
-  const runCommand = (index: number) => { const command = matches[index]; if (command && !command.disabled) command.action(); closeCommandPalette(); setQuery(""); setSelectedCommand(0); };
-  const keyCommands = (event: React.KeyboardEvent<HTMLInputElement>) => { if (event.key === "ArrowDown") { event.preventDefault(); setSelectedCommand((value) => Math.min(value + 1, Math.max(matches.length - 1, 0))); } else if (event.key === "ArrowUp") { event.preventDefault(); setSelectedCommand((value) => Math.max(value - 1, 0)); } else if (event.key === "Enter") { event.preventDefault(); runCommand(selectedCommand); } else if (event.key === "Escape") closeCommandPalette(); };
+  const visibleFileMatches = commandPaletteOpen && rootPath && query.trim() ? fileMatches : [];
+  const resultCount = matches.length + visibleFileMatches.length;
+  const resetPalette = () => { closeCommandPalette(); setQuery(""); setSelectedCommand(0); setFileMatches([]); };
+  const runCommand = (index: number) => {
+    const command = matches[index];
+    if (command) { if (!command.disabled) command.action(); resetPalette(); return; }
+    const file = visibleFileMatches[index - matches.length];
+    if (file) void openFilePath(file.path, file.name).then((tab) => { if (tab) openTab(tab); });
+    resetPalette();
+  };
+  const keyCommands = (event: React.KeyboardEvent<HTMLInputElement>) => { if (event.key === "ArrowDown") { event.preventDefault(); setSelectedCommand((value) => Math.min(value + 1, Math.max(resultCount - 1, 0))); } else if (event.key === "ArrowUp") { event.preventDefault(); setSelectedCommand((value) => Math.max(value - 1, 0)); } else if (event.key === "Enter") { event.preventDefault(); runCommand(selectedCommand); } else if (event.key === "Escape") resetPalette(); };
 
   const menus: Record<string, MenuItem[]> = {
     File: [{ label: "Open Folder…", hint: "Ctrl O", action: () => void openFolder() }, { label: "Close Folder", action: () => void closeFolder(), disabled: !rootPath }, { label: "Save", hint: "Ctrl S", action: saveCurrent, disabled: !activeTab }, { label: "Save All", action: () => void Promise.all(tabs.filter((tab) => tab.isDirty).map((tab) => saveTab(tab.id))), disabled: !tabs.some((tab) => tab.isDirty) }, { label: "sep", separator: true }, { label: "Open Recent", disabled: true }],
@@ -94,7 +112,7 @@ export default function TopBar({ onToggleTerminal, terminalCollapsed }: TopBarPr
   return <header className="topbar"><div className="topbar-left"><div className="brand-lockup"><img src={zenithMark} alt="Zenith" /><strong>Zenith</strong></div><div className="app-menu-row" aria-label="Application menu">{Object.keys(menus).map((name) => <AppMenu key={name} label={name} items={menus[name]} open={activeMenu === name} onToggle={() => setActiveMenu((current) => current === name ? null : name)} onClose={() => setActiveMenu(null)} />)}</div><span className="topbar-divider" /><div className="topbar-menu-anchor" ref={projectMenuRef}><button className="project-switcher" onClick={() => setProjectMenuOpen((value) => !value)} aria-expanded={projectMenuOpen}><FolderOpen size={16} /><span>{rootName}</span><span className="chevron">⌄</span></button>{projectMenuOpen && <div className="zenith-popover project-menu" role="menu"><button role="menuitem" onClick={() => { void openFolder(); setProjectMenuOpen(false); }}><FolderOpen size={15} />Open Folder</button><button role="menuitem" onClick={() => { void closeFolder(); setProjectMenuOpen(false); }} disabled={!rootPath}><X size={15} />Close Folder</button></div>}</div><button className="branch-switcher" title="Open Source Control" onClick={() => togglePanel("git")}><GitBranch size={15} /><span>{branchLabel}</span></button></div>
     <button className="command-search" onClick={openCommandPalette} aria-haspopup="dialog" aria-expanded={commandPaletteOpen}><Search size={16} /><span>Search anything…</span><kbd><Command size={11} /> K</kbd></button>
     <div className="topbar-actions"><Cloud className="topbar-cloud" size={19} aria-label="Workspace available offline" /><button className="ai-toggle" onClick={toggleAIPanel} title="Toggle Zenith AI"><Sparkles size={15} /><span>AI</span></button><button className="top-icon" title={`Switch to ${quickToggleTarget} preference`} aria-label={`Switch to ${quickToggleTarget} preference`} onClick={toggleAppearance}>{quickToggleTarget === "light" ? <Sun size={17} /> : <Moon size={17} />}</button><div ref={notificationRef}><button className="top-icon notification-button" title="Notifications" aria-label="Notifications" aria-expanded={notificationOpen} onClick={() => { setNotificationOpen((value) => !value); markNotificationsRead(); }}><Bell size={17} />{unread > 0 && <i>{unread > 9 ? "9+" : unread}</i>}</button>{notificationOpen && <div className="zenith-popover notification-menu"><header><strong>Notifications</strong><button onClick={clearNotifications} disabled={!notifications.length}><CheckCheck size={14} />Clear</button></header>{notifications.length ? notifications.slice(0, 6).map((item) => <p key={item.id}>{item.message}</p>) : <p className="empty-notifications">You’re all caught up.</p>}</div>}</div><button className="top-icon" title="Help" aria-label="Help" onClick={() => openDialog("help")}><CircleHelp size={17} /></button><button className="top-icon" title="Settings" aria-label="Settings" onClick={() => openSettings()}><Settings size={17} /></button><div ref={accountRef}><button className="account-button" title="Account" aria-label="Account" onClick={() => setAccountOpen((value) => !value)}><UserRound size={16} /></button>{accountOpen && <AccountPopover onClose={() => setAccountOpen(false)} />}</div>{window.zenithDesktop && <div className="window-controls" aria-label="Window controls"><button title="Minimize window" onClick={() => void window.zenithDesktop?.minimizeWindow()}><Minimize2 size={16} /></button><button title="Maximize or restore window" onClick={() => void window.zenithDesktop?.toggleMaximizeWindow()}>□</button><button title="Close window" onClick={() => void window.zenithDesktop?.closeWindow()}><X size={16} /></button></div>}</div>
-    {commandPaletteOpen && <div className="command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCommandPalette(); }}><section className="command-palette" role="dialog" aria-modal="true" aria-label="Zenith command center"><div className="command-input"><Search size={18} /><input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setSelectedCommand(0); }} onKeyDown={keyCommands} placeholder="Search commands" /></div><div className="command-results">{matches.map((command, index) => <button key={command.label} className={selectedCommand === index ? "selected" : ""} disabled={command.disabled} onMouseEnter={() => setSelectedCommand(index)} onClick={() => runCommand(index)}><span>{command.label}</span><small>{command.hint}</small></button>)}{!matches.length && <p>No Zenith command matches that search.</p>}</div><footer><span><ChevronRight size={13} />to run</span><span>↑ ↓ to navigate</span><span>Esc to close</span></footer></section></div>}
+    {commandPaletteOpen && <div className="command-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) resetPalette(); }}><section className="command-palette" role="dialog" aria-modal="true" aria-label="Zenith command center"><div className="command-input"><Search size={18} /><input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setSelectedCommand(0); setFileMatches([]); }} onKeyDown={keyCommands} placeholder="Search commands and workspace files" /></div><div className="command-results">{matches.map((command, index) => <button key={command.label} className={selectedCommand === index ? "selected" : ""} disabled={command.disabled} onMouseEnter={() => setSelectedCommand(index)} onClick={() => runCommand(index)}><span className="command-result-main"><strong>{command.label}</strong><small>{command.hint}</small></span><small className="command-result-kind">Command</small></button>)}{visibleFileMatches.map((file, fileIndex) => { const index = matches.length + fileIndex; return <button key={file.path} className={selectedCommand === index ? "selected" : ""} onMouseEnter={() => setSelectedCommand(index)} onClick={() => runCommand(index)}><span className="command-result-main"><strong>{file.name}</strong><small>{file.relativePath}</small></span><small className="command-result-kind">File</small></button>; })}{!resultCount && <p>{rootPath ? "No command or workspace file matches that search." : "No command matches. Open a folder to search files."}</p>}</div><footer><span><ChevronRight size={13} />to run</span><span>↑ ↓ to navigate</span><span>Esc to close</span></footer></section></div>}
   </header>;
 }
 

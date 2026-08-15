@@ -13,6 +13,7 @@ import { useUiStore } from "./components/ui/uiStore";
 import SettingsView from "./components/settings/SettingsView";
 import { disposeAuthBridge, initializeAuthBridge } from "./components/auth/authStore";
 import { disposeGitHubBridge, initializeGitHubBridge } from "./components/panels/githubStore";
+import { disposeWorkspaceIndexBridge, initializeWorkspaceIndexBridge } from "./components/search/workspaceIndexStore";
 
 function App() {
   const [terminalHeight, setTerminalHeight] = useState(220);
@@ -32,7 +33,8 @@ function App() {
   useEffect(() => {
     initializeAuthBridge();
     initializeGitHubBridge();
-    return () => { disposeAuthBridge(); disposeGitHubBridge(); };
+    initializeWorkspaceIndexBridge();
+    return () => { disposeAuthBridge(); disposeGitHubBridge(); disposeWorkspaceIndexBridge(); };
   }, []);
   const toggleTerminal = () => { setTerminalMaximized(false); setTerminalCollapsed((value) => !value); };
   const toggleMaximizedTerminal = () => { setTerminalCollapsed(false); setTerminalMaximized((value) => !value); };

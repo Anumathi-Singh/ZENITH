@@ -52,6 +52,18 @@ contextBridge.exposeInMainWorld("zenithDesktop", {
     openExternal: (url) => ipcRenderer.invoke("zenith:github-open-external", url),
     onProgress: (listener) => { const handler = (_event, progress) => listener(progress); ipcRenderer.on("zenith:github-progress", handler); return () => ipcRenderer.removeListener("zenith:github-progress", handler); },
   },
+  workspaceIndex: {
+    getState: () => ipcRenderer.invoke("zenith:index-state"),
+    findFiles: (query, options) => ipcRenderer.invoke("zenith:index-find-files", query, options),
+    rebuild: () => ipcRenderer.invoke("zenith:index-rebuild"),
+    onChanged: (listener) => { const handler = (_event, state) => listener(state); ipcRenderer.on("zenith:index-changed", handler); return () => ipcRenderer.removeListener("zenith:index-changed", handler); },
+  },
+  search: {
+    files: (options) => ipcRenderer.invoke("zenith:search-files", options),
+    text: (options) => ipcRenderer.invoke("zenith:search-text", options),
+    cancel: (searchId) => ipcRenderer.invoke("zenith:search-cancel", searchId),
+    onProgress: (listener) => { const handler = (_event, progress) => listener(progress); ipcRenderer.on("zenith:search-progress", handler); return () => ipcRenderer.removeListener("zenith:search-progress", handler); },
+  },
   minimizeWindow: () => ipcRenderer.invoke("zenith:window-minimize"),
   toggleMaximizeWindow: () => ipcRenderer.invoke("zenith:window-toggle-maximize"),
   closeWindow: () => ipcRenderer.invoke("zenith:window-close"),

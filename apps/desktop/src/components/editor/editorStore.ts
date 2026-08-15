@@ -13,17 +13,20 @@ interface EditorStore {
   tabs: FileTab[];
   activeTab: string;
   saveMessage: string;
+  revealRequest: { tabId: string; line: number; column: number; nonce: number } | null;
   openTab: (tab: FileTab) => void;
   setActiveTab: (id: string) => void;
   closeTab: (id: string) => void;
   updateContent: (id: string, content: string) => void;
   saveTab: (id: string) => Promise<void>;
+  revealLocation: (tabId: string, line: number, column: number) => void;
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
   tabs: [],
   activeTab: "",
   saveMessage: "No file open",
+  revealRequest: null,
   openTab: (tab) => set((state) => {
     if (state.tabs.some((item) => item.id === tab.id)) return { activeTab: tab.id };
     return { tabs: [...state.tabs, { ...tab, isDirty: false }], activeTab: tab.id, saveMessage: "Saved" };
@@ -52,4 +55,5 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       set({ saveMessage: error instanceof Error ? error.message : "Could not save this file." });
     }
   },
+  revealLocation: (tabId, line, column) => set({ activeTab: tabId, revealRequest: { tabId, line: Math.max(1, line), column: Math.max(1, column), nonce: Date.now() } }),
 }));

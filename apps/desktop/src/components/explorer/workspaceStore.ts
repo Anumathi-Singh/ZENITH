@@ -16,6 +16,7 @@ interface WorkspaceStore {
   closeFolder: () => Promise<void>;
   loadDirectory: (directoryPath: string, parentId?: string) => Promise<void>;
   openFile: (node: WorkspaceNode) => Promise<FileTab | null>;
+  openFilePath: (filePath: string, name?: string) => Promise<FileTab | null>;
   refresh: () => Promise<void>;
 }
 
@@ -80,10 +81,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       set({ message: error instanceof Error ? error.message : "Could not read this directory." });
     }
   },
-  openFile: async (node) => {
-    if (!window.zenithDesktop || node.type !== "file") return null;
+  openFile: async (node) => node.type === "file" ? get().openFilePath(node.path, node.name) : null,
+  openFilePath: async (filePath, name) => {
+    if (!window.zenithDesktop) return null;
     try {
-      return { id: node.id, name: node.name, path: node.path, language: node.language ?? languageFor(node.name), content: await window.zenithDesktop.readFile(node.path) };
+      const fileName = name || filePath.split(/[\\/]/).pop() || filePath;
+      return { id: idFor(filePath), name: fileName, path: filePath, language: languageFor(fileName), content: await window.zenithDesktop.readFile(filePath) };
     } catch (error) {
       set({ message: error instanceof Error ? error.message : "Could not read this file." });
       return null;
@@ -94,6 +97,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (!rootPath) { set({ message: "Open a folder to refresh its files." }); return; }
     set({ message: `Refreshing ${rootName}…` });
     await get().loadDirectory(rootPath);
+    void window.zenithDesktop?.workspaceIndex.rebuild();
   },
 }));
 

@@ -15,10 +15,17 @@ const { GitHubApiClient } = require("./services/github-api-client.cjs");
 const { AuthService } = require("./services/auth-service.cjs");
 const { GitCredentialEnvironment } = require("./services/git-credential-environment.cjs");
 const { GitHubService } = require("./services/github-service.cjs");
+const { loadAppConfig } = require("./services/app-config.cjs");
+const { WorkspaceIndex } = require("./services/workspace-index.cjs");
+const { SearchService } = require("./services/search-service.cjs");
+
+const appConfig = loadAppConfig({ appRoot: path.resolve(__dirname, "..") });
 
 let mainWindow;
 const workspaceService = new WorkspaceService();
 const gitService = new GitService(workspaceService);
+const workspaceIndex = new WorkspaceIndex();
+const searchService = new SearchService(workspaceIndex, { onProgress: notifySearchProgress });
 let authService;
 let githubService;
 const terminals = new Map();
@@ -154,6 +161,14 @@ function notifyGitHubProgress(progress) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:github-progress", progress);
 }
 
+function notifyIndexChanged(state) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:index-changed", state);
+}
+
+function notifySearchProgress(progress) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:search-progress", progress);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: "Zenith",
@@ -173,7 +188,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   const githubApi = new GitHubApiClient();
   const tokenStore = new SecureTokenStore(path.join(app.getPath("userData"), "auth", "github-credential.bin"), safeStorage);
-  const githubAuth = new GitHubDeviceAuth({ clientId: process.env.GITHUB_CLIENT_ID, openExternal: (url) => shell.openExternal(url) });
+  const githubAuth = new GitHubDeviceAuth({ clientId: appConfig.githubClientId, openExternal: (url) => shell.openExternal(url) });
   authService = new AuthService({ tokenStore, githubAuth, githubApi });
   githubService = new GitHubService({
     auth: authService,
@@ -184,15 +199,17 @@ app.whenReady().then(async () => {
     onProgress: notifyGitHubProgress,
   });
   authService.on("changed", notifyAuthChanged);
+  workspaceIndex.on("changed", notifyIndexChanged);
   ipcMain.handle("zenith:select-folder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     if (result.canceled || !result.filePaths[0]) return null;
     const workspace = await workspaceService.open(result.filePaths[0]);
+    void workspaceIndex.open(workspace.path);
     notifyGitStatusChanged();
     return workspace;
   });
   ipcMain.handle("zenith:read-directory", async (_event, directoryPath) => readDirectory(directoryPath));
-  ipcMain.handle("zenith:close-folder", () => { workspaceService.close(); notifyGitStatusChanged(); });
+  ipcMain.handle("zenith:close-folder", () => { workspaceService.close(); workspaceIndex.close(); notifyGitStatusChanged(); });
   ipcMain.handle("zenith:read-file", async (_event, filePath) => {
     const resolved = await workspaceService.assertExistingPath(filePath);
     const info = await fs.stat(resolved);
@@ -207,6 +224,12 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("zenith:reveal-path", async (_event, candidate) => { shell.showItemInFolder(await workspaceService.assertExistingPath(candidate)); });
   ipcMain.handle("zenith:copy-text", (_event, text) => { clipboard.writeText(String(text ?? "")); });
+  ipcMain.handle("zenith:index-state", () => asBackendResult(() => workspaceIndex.getState(), "INDEX_ERROR"));
+  ipcMain.handle("zenith:index-rebuild", () => asBackendResult(() => workspaceIndex.rebuild(), "INDEX_ERROR"));
+  ipcMain.handle("zenith:index-find-files", (_event, query, options) => asBackendResult(() => workspaceIndex.findFiles(query, options), "INDEX_ERROR"));
+  ipcMain.handle("zenith:search-files", (_event, options) => asBackendResult(() => searchService.files(options), "SEARCH_ERROR"));
+  ipcMain.handle("zenith:search-text", (_event, options) => asBackendResult(() => searchService.text(options), "SEARCH_ERROR"));
+  ipcMain.handle("zenith:search-cancel", (_event, searchId) => asBackendResult(() => searchService.cancel(searchId), "SEARCH_ERROR"));
   ipcMain.handle("zenith:terminal-profiles", () => terminalProfiles().map(publicProfile));
   ipcMain.handle("zenith:terminal-create", (event, profileId) => {
     const id = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -278,6 +301,7 @@ app.whenReady().then(async () => {
   githubHandler("zenith:github-clone-cancel", () => githubService.cancelClone());
   githubHandler("zenith:github-open-cloned-workspace", async (candidate) => {
     const workspace = await githubService.openClonedWorkspace(candidate);
+    void workspaceIndex.open(workspace.path);
     notifyGitStatusChanged();
     return workspace;
   });
@@ -292,7 +316,7 @@ app.whenReady().then(async () => {
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on("before-quit", () => { clearTimeout(gitRefreshTimer); killAllTerminals(); githubService?.cancelClone(); authService?.dispose(); });
+app.on("before-quit", () => { clearTimeout(gitRefreshTimer); searchService.dispose(); workspaceIndex.close(); killAllTerminals(); githubService?.cancelClone(); authService?.dispose(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
 
