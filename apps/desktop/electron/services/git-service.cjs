@@ -37,7 +37,10 @@ class GitService {
       const result = await this.runner(this.executable, args, {
         cwd,
         timeoutMs: options.timeoutMs ?? 30_000,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", LC_ALL: "C", ...(options.env || {}) },
+        signal: options.signal,
+        onStdout: options.onStdout,
+        onStderr: options.onStderr,
       });
       if (result.exitCode !== 0 && !options.allowFailure) throw gitError(cleanGitMessage(result, `Git exited with code ${result.exitCode}.`));
       return result;
@@ -144,6 +147,37 @@ class GitService {
   async push() {
     const repositoryRoot = await this.requireRepository();
     await this.run(["push"], { cwd: repositoryRoot, timeoutMs: 120_000 });
+  }
+
+  async cloneRepository(repositoryUrl, destinationPath, options = {}) {
+    const parent = path.dirname(destinationPath);
+    const progress = (chunk) => {
+      const message = String(chunk || "").trim().split(/\r?\n/).filter(Boolean).at(-1);
+      if (message) options.onProgress?.(message.slice(0, 500));
+    };
+    await this.run(["clone", "--progress", "--", repositoryUrl, destinationPath], {
+      cwd: parent,
+      timeoutMs: 10 * 60_000,
+      signal: options.signal,
+      env: options.env,
+      onStdout: progress,
+      onStderr: progress,
+    });
+  }
+
+  async addRemote(name, repositoryUrl) {
+    if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/.test(name)) throw gitError("The remote name is not valid.", "INVALID_REMOTE_NAME");
+    const repositoryRoot = await this.requireRepository();
+    await this.run(["remote", "add", name, repositoryUrl], { cwd: repositoryRoot });
+  }
+
+  async pushUpstream(remote, branch, options = {}) {
+    if (typeof remote !== "string" || !/^[A-Za-z0-9._-]+$/.test(remote)) throw gitError("The remote name is not valid.", "INVALID_REMOTE_NAME");
+    const repositoryRoot = await this.requireRepository();
+    const branchName = this.validateBranchName(branch);
+    const check = await this.run(["check-ref-format", "--branch", branchName], { cwd: repositoryRoot, allowFailure: true });
+    if (check.exitCode !== 0) throw gitError("The branch name is not valid.", "INVALID_BRANCH_NAME");
+    await this.run(["push", "--set-upstream", remote, branchName], { cwd: repositoryRoot, timeoutMs: 5 * 60_000, env: options.env });
   }
 
   async branches() {

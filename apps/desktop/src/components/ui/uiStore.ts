@@ -2,7 +2,7 @@
 
 export type DialogName = "auth" | "github" | "about" | "shortcuts" | "repository" | "help";
 export type AuthMode = "signin" | "signup" | "forgot";
-export type RepositoryMode = "clone" | "open" | "initialize";
+export type RepositoryMode = "clone" | "open" | "initialize" | "publish";
 export type ToastKind = "info" | "success" | "warning" | "error";
 
 export interface ToastNotice { id: number; message: string; kind: ToastKind; }

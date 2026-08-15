@@ -1,5 +1,6 @@
 ﻿const { app, BrowserWindow, clipboard, dialog, ipcMain, shell } = require("electron");
 const fs = require("node:fs/promises");
+const { safeStorage } = require("electron");
 const fsSync = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -8,10 +9,18 @@ const pty = require("node-pty");
 const { asBackendResult } = require("./services/backend-result.cjs");
 const { GitService } = require("./services/git-service.cjs");
 const { WorkspaceService } = require("./services/workspace-service.cjs");
+const { SecureTokenStore } = require("./services/secure-token-store.cjs");
+const { GitHubDeviceAuth } = require("./services/github-device-auth.cjs");
+const { GitHubApiClient } = require("./services/github-api-client.cjs");
+const { AuthService } = require("./services/auth-service.cjs");
+const { GitCredentialEnvironment } = require("./services/git-credential-environment.cjs");
+const { GitHubService } = require("./services/github-service.cjs");
 
 let mainWindow;
 const workspaceService = new WorkspaceService();
 const gitService = new GitService(workspaceService);
+let authService;
+let githubService;
 const terminals = new Map();
 const ignoredNames = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
 const maxFileBytes = 2 * 1024 * 1024;
@@ -122,6 +131,29 @@ function gitHandler(channel, operation, fallbackCode = "GIT_OPERATION_FAILED") {
   }, fallbackCode));
 }
 
+function authHandler(channel, operation, fallbackCode = "AUTH_OPERATION_FAILED") {
+  ipcMain.handle(channel, (_event, ...args) => asBackendResult(() => operation(...args), fallbackCode));
+}
+
+function githubHandler(channel, operation, fallbackCode = "GITHUB_OPERATION_FAILED") {
+  ipcMain.handle(channel, (_event, ...args) => asBackendResult(async () => {
+    try {
+      return await operation(...args);
+    } catch (error) {
+      if (error?.code === "GITHUB_UNAUTHORIZED") await authService.invalidateGitHubSession();
+      throw error;
+    }
+  }, fallbackCode));
+}
+
+function notifyAuthChanged(state) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:auth-changed", state);
+}
+
+function notifyGitHubProgress(progress) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:github-progress", progress);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: "Zenith",
@@ -138,7 +170,20 @@ function createWindow() {
   mainWindow.on("closed", () => { killAllTerminals(); mainWindow = undefined; });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const githubApi = new GitHubApiClient();
+  const tokenStore = new SecureTokenStore(path.join(app.getPath("userData"), "auth", "github-credential.bin"), safeStorage);
+  const githubAuth = new GitHubDeviceAuth({ clientId: process.env.GITHUB_CLIENT_ID, openExternal: (url) => shell.openExternal(url) });
+  authService = new AuthService({ tokenStore, githubAuth, githubApi });
+  githubService = new GitHubService({
+    auth: authService,
+    api: githubApi,
+    git: gitService,
+    workspace: workspaceService,
+    credentialEnvironment: new GitCredentialEnvironment(path.join(app.getPath("userData"), "auth")),
+    onProgress: notifyGitHubProgress,
+  });
+  authService.on("changed", notifyAuthChanged);
   ipcMain.handle("zenith:select-folder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     if (result.canceled || !result.filePaths[0]) return null;
@@ -217,11 +262,37 @@ app.whenReady().then(() => {
   gitHandler("zenith:git-remotes", () => gitService.remotes());
   gitHandler("zenith:git-history", (limit, skip) => gitService.history(limit, skip));
   gitHandler("zenith:git-init", () => gitService.init());
+  authHandler("zenith:auth-get-state", () => authService.getState());
+  authHandler("zenith:auth-github-start", () => authService.signInGitHub(), "GITHUB_AUTH_FAILED");
+  authHandler("zenith:auth-github-cancel", () => authService.cancelGitHubSignIn(), "GITHUB_AUTH_FAILED");
+  authHandler("zenith:auth-sign-out", (provider) => authService.signOut(provider));
+  githubHandler("zenith:github-user", () => githubService.getAuthenticatedUser());
+  githubHandler("zenith:github-repository-from-workspace", () => githubService.getRepositoryFromCurrentWorkspace());
+  githubHandler("zenith:github-list-repositories", (options) => githubService.listUserRepositories(options));
+  githubHandler("zenith:github-select-clone-destination", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { title: "Choose clone destination", properties: ["openDirectory", "createDirectory"] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return githubService.authorizeCloneParent(result.filePaths[0]);
+  });
+  githubHandler("zenith:github-clone", (options) => githubService.cloneRepository(options));
+  githubHandler("zenith:github-clone-cancel", () => githubService.cancelClone());
+  githubHandler("zenith:github-open-cloned-workspace", async (candidate) => {
+    const workspace = await githubService.openClonedWorkspace(candidate);
+    notifyGitStatusChanged();
+    return workspace;
+  });
+  githubHandler("zenith:github-create-repository", (options) => githubService.createRepository(options));
+  githubHandler("zenith:github-publish", (options) => githubService.publishCurrentWorkspace(options));
+  githubHandler("zenith:github-open-external", async (url) => {
+    const safeUrl = githubService.validateExternalUrl(url);
+    await shell.openExternal(safeUrl);
+  });
   createWindow();
+  void authService.initialize().then(notifyAuthChanged);
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on("before-quit", () => { clearTimeout(gitRefreshTimer); killAllTerminals(); });
+app.on("before-quit", () => { clearTimeout(gitRefreshTimer); killAllTerminals(); githubService?.cancelClone(); authService?.dispose(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
 

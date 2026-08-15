@@ -1,7 +1,11 @@
-import { ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronRight, CircleAlert, GitBranch, Minus, Plus, RefreshCw } from "lucide-react";
+import { useEffect } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronRight, CircleAlert, Copy, ExternalLink, GitBranch, GitFork, LogOut, Minus, Plus, RefreshCw } from "lucide-react";
 import type { ZenithGitChange } from "../../types/zenith-desktop";
 import { useWorkspaceStore } from "../explorer/workspaceStore";
 import { useGitStore } from "./gitStore";
+import { useAuthStore } from "../auth/authStore";
+import { useGitHubStore } from "./githubStore";
+import { notify, useUiStore } from "../ui/uiStore";
 
 function ChangeRow({ change, action, actionLabel, actionIcon }: { change: ZenithGitChange; action: () => void; actionLabel: string; actionIcon: "stage" | "unstage" }) {
   const segments = change.path.split("/");
@@ -18,6 +22,14 @@ function ChangeGroup({ title, changes, actionLabel, actionIcon, action, allActio
 export default function GitPanel() {
   const rootPath = useWorkspaceStore((state) => state.rootPath);
   const { available, version, isRepository, status, loading, operation, error, commitMessage, setCommitMessage, refresh, initialize, stage, unstage, stageAll, unstageAll, commit, fetch, pull, push } = useGitStore();
+  const { session, signOut } = useAuthStore();
+  const { repository: githubRepository, loading: githubLoading, error: githubError, refreshRepository, clear: clearGitHub } = useGitHubStore();
+  const openDialog = useUiStore((state) => state.openDialog);
+
+  useEffect(() => {
+    if (rootPath && isRepository) void refreshRepository();
+    else clearGitHub();
+  }, [clearGitHub, isRepository, refreshRepository, rootPath, session?.user.id, status?.repositoryRoot]);
 
   const workingChanges = status ? [...status.conflicts, ...status.unstaged, ...status.untracked] : [];
   const branchLabel = status?.branch.detached ? `Detached at ${status.branch.oid?.slice(0, 7) ?? "HEAD"}` : status?.branch.name ?? "No commits yet";
@@ -33,6 +45,7 @@ export default function GitPanel() {
         {status.branch.upstream && <p className="git-upstream"><ChevronRight size={12} />{status.branch.upstream}</p>}
       </>}
     {operation && operation !== "committing" && <p className="git-operation" role="status">Git is {operation}…</p>}
+    <section className="github-connection"><header><span><GitFork size={15} />GitHub</span><small>{session ? `@${session.user.login}` : "Not Connected"}</small></header>{session ? <><div className="github-account-row">{session.user.avatarUrl && <img src={session.user.avatarUrl} alt="" />}<span><strong>{session.user.name || session.user.login}</strong><small>@{session.user.login}</small></span></div>{githubLoading ? <p>Loading repository metadata…</p> : githubRepository ? <><div className="github-repository-row"><strong>{githubRepository.fullName}</strong><small>{githubRepository.metadata ? `${githubRepository.metadata.visibility}${githubRepository.metadata.archived ? " · archived" : ""}` : githubRepository.remoteName}</small></div><div className="github-actions"><button onClick={() => void window.zenithDesktop?.github.openExternal(githubRepository.url)}><ExternalLink size={13} />Open</button><button onClick={() => { void window.zenithDesktop?.copyText(githubRepository.cloneUrl); notify("Remote URL copied.", "success"); }}><Copy size={13} />Copy URL</button></div></> : isRepository ? <button className="secondary-action" onClick={() => openDialog("repository", "publish")}><ArrowUpFromLine size={13} />Publish Repository</button> : null}<div className="github-actions"><button onClick={() => openDialog("repository", "clone")}><ArrowDownToLine size={13} />Clone</button><button onClick={() => void signOut("github")}><LogOut size={13} />Sign Out</button></div></> : <><p>Connect GitHub for repository metadata, private clone, and publish.</p><button className="secondary-action" onClick={() => openDialog("github")}><GitFork size={13} />Connect GitHub</button><button className="github-clone-offline" onClick={() => openDialog("repository", "clone")}><ArrowDownToLine size={13} />Clone a public repository</button></>}{githubError && <p className="git-error" role="alert"><CircleAlert size={13} />{githubError}</p>}</section>
     {error && <p className="git-error" role="alert"><CircleAlert size={13} />{error}</p>}
   </section>;
 }

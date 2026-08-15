@@ -11,6 +11,8 @@ import { useAppPreferences } from "./components/settings/appPreferences";
 import { useLayoutStore } from "./components/layout/layoutStore";
 import { useUiStore } from "./components/ui/uiStore";
 import SettingsView from "./components/settings/SettingsView";
+import { disposeAuthBridge, initializeAuthBridge } from "./components/auth/authStore";
+import { disposeGitHubBridge, initializeGitHubBridge } from "./components/panels/githubStore";
 
 function App() {
   const [terminalHeight, setTerminalHeight] = useState(220);
@@ -27,6 +29,11 @@ function App() {
     root.dataset.motion = animations && !reducedMotion ? "full" : "reduced";
   }, [animations, density, panelBorders, panelTransparency, reducedMotion]);
   useEffect(() => { setAIPanelOpen(showAiOnStartup); }, [setAIPanelOpen, showAiOnStartup]);
+  useEffect(() => {
+    initializeAuthBridge();
+    initializeGitHubBridge();
+    return () => { disposeAuthBridge(); disposeGitHubBridge(); };
+  }, []);
   const toggleTerminal = () => { setTerminalMaximized(false); setTerminalCollapsed((value) => !value); };
   const toggleMaximizedTerminal = () => { setTerminalCollapsed(false); setTerminalMaximized((value) => !value); };
   return <div className={`zenith-app theme-${selectedThemeId}`}><TopBar onToggleTerminal={toggleTerminal} terminalCollapsed={terminalCollapsed} />{!terminalMaximized && <div className="workspace-wrap"><Workspace /></div>}{!terminalMaximized && !terminalCollapsed && <ResizeHandle onResize={setTerminalHeight} />}<Terminal height={terminalHeight} collapsed={terminalCollapsed} maximized={terminalMaximized} onToggleCollapsed={toggleTerminal} onToggleMaximized={toggleMaximizedTerminal} /><StatusBar />{settingsOpen && <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSettings(); }}><SettingsView /></div>}<ZenithDialogs /><ToastViewport /></div>;

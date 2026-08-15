@@ -12,6 +12,7 @@ interface WorkspaceStore {
   tree: WorkspaceNode[];
   message: string;
   openFolder: () => Promise<void>;
+  openClonedFolder: (folderPath: string) => Promise<void>;
   closeFolder: () => Promise<void>;
   loadDirectory: (directoryPath: string, parentId?: string) => Promise<void>;
   openFile: (node: WorkspaceNode) => Promise<FileTab | null>;
@@ -48,6 +49,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       notify(`${selected.name} opened.`, "success");
     } catch (error) {
       set({ message: error instanceof Error ? error.message : "Could not open the selected folder." });
+    }
+  },
+  openClonedFolder: async (folderPath) => {
+    const api = window.zenithDesktop?.github;
+    if (!api) return;
+    try {
+      const result = await api.openClonedWorkspace(folderPath);
+      if (!result.ok) throw new Error(result.error.message);
+      const workspace = result.data;
+      set({ rootName: workspace.name, rootPath: workspace.path, tree: [], message: `Opening ${workspace.name}…` });
+      await get().loadDirectory(workspace.path);
+      notify(`${workspace.name} opened.`, "success");
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : "Could not open the cloned repository." });
+      notify(error instanceof Error ? error.message : "Could not open the cloned repository.", "error");
     }
   },
   closeFolder: async () => {

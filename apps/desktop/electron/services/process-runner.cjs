@@ -20,6 +20,7 @@ function runProcess(executable, args, options = {}) {
     let stderr = "";
     let settled = false;
     let timer;
+    const signal = options.signal;
     const child = spawn(executable, args, {
       cwd: options.cwd,
       env: options.env || process.env,
@@ -28,10 +29,16 @@ function runProcess(executable, args, options = {}) {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    const onAbort = () => {
+      try { child.kill(); } catch { /* process has already exited */ }
+      finish(() => reject(new ProcessExecutionError("Process was cancelled.", { code: "PROCESS_CANCELLED", stdout, stderr })));
+    };
+
     const finish = (callback) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       callback();
     };
 
@@ -45,8 +52,8 @@ function runProcess(executable, args, options = {}) {
       return next;
     };
 
-    child.stdout.on("data", (chunk) => { stdout = append(stdout, chunk); });
-    child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk); });
+    child.stdout.on("data", (chunk) => { stdout = append(stdout, chunk); options.onStdout?.(chunk.toString("utf8")); });
+    child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk); options.onStderr?.(chunk.toString("utf8")); });
     child.on("error", (error) => finish(() => reject(new ProcessExecutionError(error.message, { code: error.code === "ENOENT" ? "EXECUTABLE_NOT_FOUND" : "PROCESS_START_FAILED", stdout, stderr }))));
     child.on("close", (exitCode, signal) => finish(() => resolve({ exitCode: exitCode ?? -1, signal, stdout, stderr })));
 
@@ -54,6 +61,8 @@ function runProcess(executable, args, options = {}) {
       try { child.kill(); } catch { /* process has already exited */ }
       finish(() => reject(new ProcessExecutionError(`Process timed out after ${timeoutMs}ms.`, { code: "PROCESS_TIMEOUT", stdout, stderr })));
     }, timeoutMs);
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 

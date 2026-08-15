@@ -85,3 +85,28 @@ test("fetches, pushes, and pulls through a disposable bare remote", async (t) =>
   await service.pull();
   assert.equal((await fs.readFile(path.join(second, "first.txt"), "utf8")).replace(/\r\n/g, "\n"), "first\n");
 });
+
+test("clones a disposable repository with controlled native Git arguments", async (t) => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "zenith clone test "));
+  t.after(() => fs.rm(base, { recursive: true, force: true }));
+  const source = path.join(base, "source");
+  const remote = path.join(base, "remote.git");
+  const clone = path.join(base, "cloned project");
+  await fs.mkdir(source);
+  await git(base, ["init", "--bare", remote]);
+  await git(source, ["init", "--initial-branch=main"]);
+  await git(source, ["config", "user.name", "Zenith Test"]);
+  await git(source, ["config", "user.email", "zenith@example.test"]);
+  await fs.writeFile(path.join(source, "README.md"), "clone fixture\n");
+  await git(source, ["add", "--all"]);
+  await git(source, ["commit", "-m", "fixture"]);
+  await git(source, ["remote", "add", "origin", remote]);
+  await git(source, ["push", "-u", "origin", "main"]);
+  await git(remote, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+  const workspace = new WorkspaceService();
+  await workspace.open(source);
+  const service = new GitService(workspace);
+  await service.cloneRepository(remote, clone);
+  assert.equal((await fs.readFile(path.join(clone, "README.md"), "utf8")).replace(/\r\n/g, "\n"), "clone fixture\n");
+  assert.equal(await git(clone, ["remote", "get-url", "origin"]), remote);
+});
