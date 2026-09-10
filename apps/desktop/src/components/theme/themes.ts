@@ -225,7 +225,7 @@ export const themeRegistry = Object.fromEntries(seeds.map((seed) => [seed.id, bu
 export const themes = themeRegistry;
 export const themeEntries = Object.entries(themeRegistry) as [ThemeName, ZenithTheme][];
 export const fallbackThemeName: ThemeName = "light";
-export const isThemeName = (value: string | null | undefined): value is ThemeName => Boolean(value && value in themeRegistry);
+export const isThemeName = (value: unknown): value is ThemeName => typeof value === "string" && Object.hasOwn(themeRegistry, value);
 
 export function cssVariablesForTheme(theme: ZenithTheme): Record<string, string> {
   return {

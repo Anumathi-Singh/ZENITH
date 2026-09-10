@@ -32,6 +32,7 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
   const views = useRef(new Map<string, TerminalView>());
   const sessionsRef = useRef<Session[]>([]);
   const startedInitialSession = useRef(false);
+  const pendingOutput = useRef(new Map<string, string>());
   const profileMenuRef = useDismissableLayer<HTMLDivElement>(profileMenuOpen, () => setProfileMenuOpen(false));
 
   const xtermTheme = useMemo(() => {
@@ -44,7 +45,7 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
     if (!view || !window.zenithDesktop) return;
     try {
       view.fit.fit();
-      void window.zenithDesktop.terminalResize(id, view.terminal.cols, view.terminal.rows);
+      void window.zenithDesktop.terminalResize(id, view.terminal.cols, view.terminal.rows).catch(() => { /* window/session may be closing */ });
     } catch {
       // The inactive session can be hidden briefly while the layout transitions.
     }
@@ -73,7 +74,9 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
     terminal.writeln(`Zenith terminal · ${session.profileLabel}`);
     terminal.writeln(`Working directory: ${session.cwd}`);
     fitSession(session.id);
-    void window.zenithDesktop.terminalInput(session.id, "\r");
+    const buffered = pendingOutput.current.get(session.id);
+    if (buffered) terminal.write(buffered);
+    pendingOutput.current.delete(session.id);
     terminal.focus();
   }, [fitSession, xtermTheme]);
 
@@ -101,7 +104,11 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
   }, []);
 
   useEffect(() => {
-    const removeData = window.zenithDesktop?.onTerminalData(({ id, data }) => views.current.get(id)?.terminal.write(data));
+    const removeData = window.zenithDesktop?.onTerminalData(({ id, data }) => {
+      const view = views.current.get(id);
+      if (view) view.terminal.write(data);
+      else pendingOutput.current.set(id, ((pendingOutput.current.get(id) ?? "") + data).slice(-262144));
+    });
     const removeExit = window.zenithDesktop?.onTerminalExit(({ id, exitCode }) => {
       const view = views.current.get(id);
       view?.terminal.writeln(`\r\nShell exited with code ${exitCode}.`);
@@ -184,7 +191,7 @@ export default function Terminal({ height, collapsed, maximized, onToggleCollaps
           {!collapsed && <button title="Close active terminal" disabled={!activeId} onClick={() => activeId && void closeSession(activeId)}><X size={17} /></button>}
         </div>
       </header>
-      {!collapsed && <div className="terminal-body zenith-terminal-body">{sessions.map((session) => <div key={session.id} ref={(element) => { if (element) hosts.current.set(session.id, element); else hosts.current.delete(session.id); }} className={`zenith-terminal-host ${session.id === activeId ? "active" : ""}`} />)}{!sessions.length && !error && <button className="terminal-start" onClick={() => void createSession()}>Start a terminal</button>}{error && <p className="terminal-error">{error}</p>}</div>}
+      <div className="terminal-body zenith-terminal-body" style={{ display: collapsed ? "none" : undefined }}>{sessions.map((session) => <div key={session.id} ref={(element) => { if (element) hosts.current.set(session.id, element); else hosts.current.delete(session.id); }} className={`zenith-terminal-host ${session.id === activeId ? "active" : ""}`} />)}{!sessions.length && !error && <button className="terminal-start" onClick={() => void createSession()}>Start a terminal</button>}{error && <p className="terminal-error">{error}</p>}</div>
     </section>
   );
 }

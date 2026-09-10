@@ -19,7 +19,22 @@ const defaults: SavedPreferences = {
   confirmBeforeClosingDirtyFiles: true, anonymousDiagnostics: false, crashReports: false,
 };
 function loadPreferences(): SavedPreferences {
-  try { const value = localStorage.getItem(storageKey); return value ? { ...defaults, ...JSON.parse(value) } : defaults; }
+  try {
+    const value = localStorage.getItem(storageKey);
+    const parsed: unknown = value ? JSON.parse(value) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return defaults;
+    const stored = parsed as Record<string, unknown>;
+    const result = { ...defaults };
+    for (const key of Object.keys(defaults) as (keyof SavedPreferences)[]) {
+      const candidate = stored[key];
+      if (typeof defaults[key] === "boolean" && typeof candidate === "boolean") Object.assign(result, { [key]: candidate });
+    }
+    if (stored.density === "compact" || stored.density === "comfortable") result.density = stored.density;
+    if (stored.startBehavior === "welcome" || stored.startBehavior === "restore") result.startBehavior = stored.startBehavior;
+    if (["Planner", "Coder", "Reviewer", "Tester", "Docs"].includes(String(stored.defaultAgent))) result.defaultAgent = stored.defaultAgent as SavedPreferences["defaultAgent"];
+    if (typeof stored.defaultTerminalProfile === "string") result.defaultTerminalProfile = stored.defaultTerminalProfile;
+    return result;
+  }
   catch { return defaults; }
 }
 const savedPreferences = (current: AppPreferences): SavedPreferences => ({

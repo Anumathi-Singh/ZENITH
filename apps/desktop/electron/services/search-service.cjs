@@ -1,4 +1,6 @@
 const fsp = require("node:fs/promises");
+const path = require("node:path");
+const { Worker, isMainThread, workerData, parentPort } = require("node:worker_threads");
 
 const BINARY_EXTENSIONS = new Set(["7z", "avi", "bin", "bmp", "class", "dll", "doc", "docx", "eot", "exe", "gif", "gz", "ico", "jar", "jpeg", "jpg", "mov", "mp3", "mp4", "pdf", "png", "ppt", "pptx", "so", "tar", "ttf", "webm", "webp", "woff", "woff2", "xls", "xlsx", "zip"]);
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
@@ -66,6 +68,35 @@ class SearchService {
   async text(options = {}) {
     const query = String(options.query || "");
     if (!query) return [];
+    if (query.length > 2000) throw searchError("Search query is too long.", "INVALID_SEARCH");
+    if (isMainThread) {
+      const rootPath = this.index.getState().rootPath;
+      if (!rootPath) throw searchError("Open a folder to search files.", "NO_WORKSPACE");
+      const { id, controller } = this.begin(options.searchId);
+      // Even adversarial regular expressions cannot block the Electron main thread.
+      const worker = new Worker(__filename, { workerData: { zenithSearch: true, rootPath, files: this.index.listFiles(), options } });
+      try {
+        return await new Promise((resolve, reject) => {
+          let settled = false;
+          const finish = (error, value) => {
+            if (settled) return; settled = true;
+            clearTimeout(timer); controller.signal.removeEventListener("abort", abort);
+            void worker.terminate();
+            error ? reject(error) : resolve(value);
+          };
+          const abort = () => finish(searchError("Search cancelled.", "SEARCH_CANCELLED"));
+          const timer = setTimeout(() => finish(searchError("Search exceeded its time limit. Narrow the query.", "SEARCH_TIMEOUT")), 10000);
+          controller.signal.addEventListener("abort", abort, { once: true });
+          worker.on("message", (message) => {
+            if (message.progress) this.onProgress(message.progress);
+            else if (message.error) finish(searchError(message.error.message, message.error.code));
+            else finish(null, message.results);
+          });
+          worker.on("error", () => finish(searchError("The search worker stopped unexpectedly.")));
+          worker.on("exit", () => { if (!settled) finish(searchError("The search worker stopped unexpectedly.")); });
+        });
+      } finally { this.finish(id, controller); }
+    }
     if (options.regex) { try { new RegExp(query); } catch { throw searchError("Enter a valid regular expression.", "INVALID_SEARCH_PATTERN"); } }
     const { id, controller } = this.begin(options.searchId);
     const files = this.index.listFiles().filter((file) => !BINARY_EXTENSIONS.has(file.extension) && matchesFilters(file.relativePath, options.include, options.exclude));
@@ -76,8 +107,11 @@ class SearchService {
       while (!controller.signal.aborted && results.length < maximum) {
         const file = files[cursor++]; if (!file) return;
         try {
-          const info = await fsp.stat(file.path); if (!info.isFile() || info.size > MAX_TEXT_BYTES) continue;
-          const buffer = await fsp.readFile(file.path); if (buffer.subarray(0, 8192).includes(0)) continue;
+          const real = await fsp.realpath(file.path);
+          const relative = path.relative(this.index.getState().rootPath, real);
+          if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+          const info = await fsp.stat(real); if (!info.isFile() || info.size > MAX_TEXT_BYTES) continue;
+          const buffer = await fsp.readFile(real); if (buffer.length > MAX_TEXT_BYTES || buffer.includes(0)) continue;
           const lines = buffer.toString("utf8").split(/\r?\n/);
           for (let lineIndex = 0; lineIndex < lines.length && results.length < maximum; lineIndex += 1) {
             if (controller.signal.aborted) break;
@@ -99,3 +133,14 @@ class SearchService {
 }
 
 module.exports = { BINARY_EXTENSIONS, MAX_TEXT_BYTES, SearchService, globRegex, lineMatches, matchesFilters, searchError };
+
+if (!isMainThread && workerData?.zenithSearch) {
+  const service = new SearchService({
+    listFiles: () => workerData.files,
+    getState: () => ({ rootPath: workerData.rootPath }),
+  }, { onProgress: (progress) => parentPort.postMessage({ progress }) });
+  service.text(workerData.options).then(
+    (results) => parentPort.postMessage({ results }),
+    (error) => parentPort.postMessage({ error: { message: error.message, code: error.code } }),
+  );
+}

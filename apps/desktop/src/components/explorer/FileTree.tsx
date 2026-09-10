@@ -12,7 +12,7 @@ function TreeActions({ path, onClose }: { path: string; onClose: () => void }) {
   return <div className="file-tree-menu zenith-popover"><button onClick={() => void copy()}><Copy size={14} />Copy Path</button><button disabled={!window.zenithDesktop?.revealPath} onClick={() => { void window.zenithDesktop?.revealPath(path); onClose(); }}><FolderOpen size={14} />Reveal in Explorer</button></div>;
 }
 function TreeNode({ node, depth }: { node: WorkspaceNode; depth: number }) {
-  const [open, setOpen] = useState(node.type === "folder" && depth === 0); const [menuOpen, setMenuOpen] = useState(false);
+  const [open, setOpen] = useState(false); const [menuOpen, setMenuOpen] = useState(false);
   const openTab = useEditorStore((state) => state.openTab); const { openFile, loadDirectory } = useWorkspaceStore();
   useEffect(() => { const close = () => setMenuOpen(false); window.addEventListener("scroll", close, true); return () => window.removeEventListener("scroll", close, true); }, []);
   const toggleFolder = async () => { const nextOpen = !open; setOpen(nextOpen); if (nextOpen && !node.loaded) await loadDirectory(node.path, node.id); };

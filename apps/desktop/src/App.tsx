@@ -11,6 +11,7 @@ import { useAppPreferences } from "./components/settings/appPreferences";
 import { useLayoutStore } from "./components/layout/layoutStore";
 import { useUiStore } from "./components/ui/uiStore";
 import SettingsView from "./components/settings/SettingsView";
+import { useEditorStore } from "./components/editor/editorStore";
 import { disposeAuthBridge, initializeAuthBridge } from "./components/auth/authStore";
 import { disposeGitHubBridge, initializeGitHubBridge } from "./components/panels/githubStore";
 import { disposeWorkspaceIndexBridge, initializeWorkspaceIndexBridge } from "./components/search/workspaceIndexStore";
@@ -23,6 +24,26 @@ function App() {
   const { density, animations, reducedMotion, panelBorders, panelTransparency, showAiOnStartup } = useAppPreferences();
   const setAIPanelOpen = useLayoutStore((state) => state.setAIPanelOpen);
   const { settingsOpen, closeSettings } = useUiStore();
+  useEffect(() => {
+    if (terminalCollapsed || terminalMaximized) return;
+    const clampTerminal = () => {
+      const workspace = document.querySelector(".workspace-wrap")?.getBoundingClientRect();
+      const terminal = document.querySelector(".terminal-panel")?.getBoundingClientRect();
+      if (workspace && terminal) setTerminalHeight((height) => Math.min(height, Math.max(120, workspace.height + terminal.height - 240)));
+    };
+    clampTerminal();
+    window.addEventListener("resize", clampTerminal);
+    return () => window.removeEventListener("resize", clampTerminal);
+  }, [terminalCollapsed, terminalMaximized]);
+  useEffect(() => {
+    const protectEdits = (event: BeforeUnloadEvent) => {
+      if (useEditorStore.getState().tabs.some((tab) => tab.isDirty || tab.isSaving)) {
+        event.preventDefault(); event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", protectEdits);
+    return () => window.removeEventListener("beforeunload", protectEdits);
+  }, []);
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.density = density; root.dataset.panelBorders = String(panelBorders);
@@ -38,6 +59,6 @@ function App() {
   }, []);
   const toggleTerminal = () => { setTerminalMaximized(false); setTerminalCollapsed((value) => !value); };
   const toggleMaximizedTerminal = () => { setTerminalCollapsed(false); setTerminalMaximized((value) => !value); };
-  return <div className={`zenith-app theme-${selectedThemeId}`}><TopBar onToggleTerminal={toggleTerminal} terminalCollapsed={terminalCollapsed} />{!terminalMaximized && <div className="workspace-wrap"><Workspace /></div>}{!terminalMaximized && !terminalCollapsed && <ResizeHandle onResize={setTerminalHeight} />}<Terminal height={terminalHeight} collapsed={terminalCollapsed} maximized={terminalMaximized} onToggleCollapsed={toggleTerminal} onToggleMaximized={toggleMaximizedTerminal} /><StatusBar />{settingsOpen && <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSettings(); }}><SettingsView /></div>}<ZenithDialogs /><ToastViewport /></div>;
+  return <div className={`zenith-app theme-${selectedThemeId}`}><TopBar onToggleTerminal={toggleTerminal} terminalCollapsed={terminalCollapsed} /><div className="workspace-wrap" style={{ display: terminalMaximized ? "none" : undefined }}><Workspace /></div>{!terminalMaximized && !terminalCollapsed && <ResizeHandle onResize={setTerminalHeight} />}<Terminal height={terminalHeight} collapsed={terminalCollapsed} maximized={terminalMaximized} onToggleCollapsed={toggleTerminal} onToggleMaximized={toggleMaximizedTerminal} /><StatusBar />{settingsOpen && <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSettings(); }}><SettingsView /></div>}<ZenithDialogs /><ToastViewport /></div>;
 }
 export default App;

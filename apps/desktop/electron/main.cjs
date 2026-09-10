@@ -39,7 +39,6 @@ let aiConfigService;
 let aiOrchestrator;
 const terminals = new Map();
 const ignoredNames = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
-const maxFileBytes = 2 * 1024 * 1024;
 
 function assertWorkspacePath(candidate) {
   return workspaceService.assertPath(candidate);
@@ -115,7 +114,7 @@ function publicProfile(profile) {
 
 function resolveProfile(profileId) {
   const profiles = terminalProfiles();
-  const profile = profiles.find((candidate) => candidate.id === profileId) || profiles[0];
+  const profile = profileId ? profiles.find((candidate) => candidate.id === profileId) : profiles[0];
   if (!profile) throw new Error("No supported terminal shell was found on this computer.");
   return profile;
 }
@@ -140,7 +139,7 @@ function notifyGitStatusChanged() {
 }
 
 function gitHandler(channel, operation, fallbackCode = "GIT_OPERATION_FAILED") {
-  ipcMain.handle(channel, (_event, ...args) => asBackendResult(async () => {
+  handleIpc(channel, (_event, ...args) => asBackendResult(async () => {
     const data = await operation(...args);
     if (channel !== "zenith:git-status" && channel !== "zenith:git-version" && channel !== "zenith:git-branches" && channel !== "zenith:git-remotes" && channel !== "zenith:git-history") notifyGitStatusChanged();
     return data;
@@ -148,11 +147,11 @@ function gitHandler(channel, operation, fallbackCode = "GIT_OPERATION_FAILED") {
 }
 
 function authHandler(channel, operation, fallbackCode = "AUTH_OPERATION_FAILED") {
-  ipcMain.handle(channel, (_event, ...args) => asBackendResult(() => operation(...args), fallbackCode));
+  handleIpc(channel, (_event, ...args) => asBackendResult(() => operation(...args), fallbackCode));
 }
 
 function githubHandler(channel, operation, fallbackCode = "GITHUB_OPERATION_FAILED") {
-  ipcMain.handle(channel, (_event, ...args) => asBackendResult(async () => {
+  handleIpc(channel, (_event, ...args) => asBackendResult(async () => {
     try {
       return await operation(...args);
     } catch (error) {
@@ -183,7 +182,15 @@ function notifyAIRunEvent(event) {
 }
 
 function aiHandler(channel, operation, fallbackCode = "AI_OPERATION_FAILED") {
-  ipcMain.handle(channel, (_event, ...args) => asBackendResult(() => operation(...args), fallbackCode));
+  handleIpc(channel, (_event, ...args) => asBackendResult(() => operation(...args), fallbackCode));
+}
+
+function handleIpc(channel, operation) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents ||
+        event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error("Untrusted desktop IPC sender.");
+    return operation(event, ...args);
+  });
 }
 
 function createWindow() {
@@ -194,9 +201,27 @@ function createWindow() {
     minWidth: 960,
     minHeight: 680,
     icon: path.join(__dirname, "..", "src", "assets", "logo", "app-icon.png"),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, "preload.cjs") },
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, "preload.cjs") },
   });
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devServerUrl && devServerUrl !== "http://127.0.0.1:5173") throw new Error("Zenith only accepts its local development server.");
+  const contents = mainWindow.webContents;
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-navigate", (event) => event.preventDefault());
+  contents.on("will-redirect", (event) => event.preventDefault());
+  contents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  contents.session.setPermissionCheckHandler(() => false);
+  contents.on("will-prevent-unload", (event) => {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning", buttons: ["Keep editing", "Discard and close"], defaultId: 0, cancelId: 0,
+      title: "Unsaved files", message: "You have unsaved changes. Closing or reloading will discard them.",
+    });
+    if (choice === 1) event.preventDefault();
+  });
+  contents.on("render-process-gone", (_event, details) => {
+    killAllTerminals();
+    console.error("Zenith renderer stopped:", details.reason);
+  });
   if (devServerUrl) mainWindow.loadURL(devServerUrl);
   else mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   mainWindow.on("closed", () => { killAllTerminals(); mainWindow = undefined; });
@@ -234,7 +259,7 @@ app.whenReady().then(async () => {
   aiOrchestrator.on("event", notifyAIRunEvent);
   authService.on("changed", notifyAuthChanged);
   workspaceIndex.on("changed", notifyIndexChanged);
-  ipcMain.handle("zenith:select-folder", async () => {
+  handleIpc("zenith:select-folder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     if (result.canceled || !result.filePaths[0]) return null;
     aiOrchestrator.cancelAll("The workspace changed.");
@@ -243,31 +268,27 @@ app.whenReady().then(async () => {
     notifyGitStatusChanged();
     return workspace;
   });
-  ipcMain.handle("zenith:read-directory", async (_event, directoryPath) => readDirectory(directoryPath));
-  ipcMain.handle("zenith:close-folder", () => { aiOrchestrator.cancelAll("The workspace was closed."); workspaceService.close(); workspaceIndex.close(); notifyGitStatusChanged(); });
-  ipcMain.handle("zenith:read-file", async (_event, filePath) => {
-    const resolved = await workspaceService.assertExistingPath(filePath);
-    const info = await fs.stat(resolved);
-    if (!info.isFile()) throw new Error("Requested path is not a file.");
-    if (info.size > maxFileBytes) throw new Error("File is too large to open in Zenith.");
-    return fs.readFile(resolved, "utf8");
+  handleIpc("zenith:read-directory", async (_event, directoryPath) => readDirectory(directoryPath));
+  handleIpc("zenith:close-folder", () => { aiOrchestrator.cancelAll("The workspace was closed."); workspaceService.close(); workspaceIndex.close(); notifyGitStatusChanged(); });
+  handleIpc("zenith:read-file", async (_event, filePath) => {
+    return workspaceService.readFile(filePath);
   });
-  ipcMain.handle("zenith:write-file", async (_event, filePath, content) => {
-    const resolved = await workspaceService.assertExistingPath(filePath);
-    await fs.writeFile(resolved, content, "utf8");
+  handleIpc("zenith:write-file", async (_event, filePath, content) => {
+    await workspaceService.writeFile(filePath, content);
     notifyGitStatusChanged();
   });
-  ipcMain.handle("zenith:reveal-path", async (_event, candidate) => { shell.showItemInFolder(await workspaceService.assertExistingPath(candidate)); });
-  ipcMain.handle("zenith:copy-text", (_event, text) => { clipboard.writeText(String(text ?? "")); });
-  ipcMain.handle("zenith:index-state", () => asBackendResult(() => workspaceIndex.getState(), "INDEX_ERROR"));
-  ipcMain.handle("zenith:index-rebuild", () => asBackendResult(() => workspaceIndex.rebuild(), "INDEX_ERROR"));
-  ipcMain.handle("zenith:index-find-files", (_event, query, options) => asBackendResult(() => workspaceIndex.findFiles(query, options), "INDEX_ERROR"));
-  ipcMain.handle("zenith:search-files", (_event, options) => asBackendResult(() => searchService.files(options), "SEARCH_ERROR"));
-  ipcMain.handle("zenith:search-text", (_event, options) => asBackendResult(() => searchService.text(options), "SEARCH_ERROR"));
-  ipcMain.handle("zenith:search-cancel", (_event, searchId) => asBackendResult(() => searchService.cancel(searchId), "SEARCH_ERROR"));
-  ipcMain.handle("zenith:terminal-profiles", () => terminalProfiles().map(publicProfile));
-  ipcMain.handle("zenith:terminal-create", (event, profileId) => {
+  handleIpc("zenith:reveal-path", async (_event, candidate) => { shell.showItemInFolder(await workspaceService.assertExistingPath(candidate)); });
+  handleIpc("zenith:copy-text", (_event, text) => { clipboard.writeText(String(text ?? "")); });
+  handleIpc("zenith:index-state", () => asBackendResult(() => workspaceIndex.getState(), "INDEX_ERROR"));
+  handleIpc("zenith:index-rebuild", () => asBackendResult(() => workspaceIndex.rebuild(), "INDEX_ERROR"));
+  handleIpc("zenith:index-find-files", (_event, query, options) => asBackendResult(() => workspaceIndex.findFiles(query, options), "INDEX_ERROR"));
+  handleIpc("zenith:search-files", (_event, options) => asBackendResult(() => searchService.files(options), "SEARCH_ERROR"));
+  handleIpc("zenith:search-text", (_event, options) => asBackendResult(() => searchService.text(options), "SEARCH_ERROR"));
+  handleIpc("zenith:search-cancel", (_event, searchId) => asBackendResult(() => searchService.cancel(searchId), "SEARCH_ERROR"));
+  handleIpc("zenith:terminal-profiles", () => terminalProfiles().map(publicProfile));
+  handleIpc("zenith:terminal-create", (event, profileId) => {
     const id = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (terminals.size >= 12) throw new Error("Close a terminal before opening another (limit 12).");
     const profile = resolveProfile(profileId);
     const cwd = workspaceService.getRoot() || os.homedir();
     try {
@@ -291,19 +312,20 @@ app.whenReady().then(async () => {
       throw new Error(`Could not start shell: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
-  ipcMain.handle("zenith:terminal-input", (_event, id, data) => {
+  handleIpc("zenith:terminal-input", (_event, id, data) => {
     const session = terminals.get(id);
     if (!session) throw new Error("Terminal session is not running.");
+    if (typeof data !== "string" || data.length > 65536) throw new Error("Invalid terminal input.");
     session.process.write(data);
   });
-  ipcMain.handle("zenith:terminal-resize", (_event, id, cols, rows) => {
+  handleIpc("zenith:terminal-resize", (_event, id, cols, rows) => {
     const session = terminals.get(id);
-    if (session && cols > 0 && rows > 0) session.process.resize(cols, rows);
+    if (session && Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0 && cols <= 1000 && rows <= 500) session.process.resize(cols, rows);
   });
-  ipcMain.handle("zenith:terminal-kill", (_event, id) => killTerminal(id));
-  ipcMain.handle("zenith:window-minimize", () => mainWindow?.minimize());
-  ipcMain.handle("zenith:window-toggle-maximize", () => { if (!mainWindow) return; if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize(); });
-  ipcMain.handle("zenith:window-close", () => mainWindow?.close());
+  handleIpc("zenith:terminal-kill", (_event, id) => killTerminal(id));
+  handleIpc("zenith:window-minimize", () => mainWindow?.minimize());
+  handleIpc("zenith:window-toggle-maximize", () => { if (!mainWindow) return; if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize(); });
+  handleIpc("zenith:window-close", () => mainWindow?.close());
   gitHandler("zenith:git-version", () => gitService.getVersion(), "GIT_UNAVAILABLE");
   gitHandler("zenith:git-status", () => gitService.status());
   gitHandler("zenith:git-stage", (paths) => gitService.stage(Array.isArray(paths) ? paths : []));
@@ -335,6 +357,7 @@ app.whenReady().then(async () => {
   githubHandler("zenith:github-clone", (options) => githubService.cloneRepository(options));
   githubHandler("zenith:github-clone-cancel", () => githubService.cancelClone());
   githubHandler("zenith:github-open-cloned-workspace", async (candidate) => {
+    aiOrchestrator.cancelAll("The workspace changed.");
     const workspace = await githubService.openClonedWorkspace(candidate);
     void workspaceIndex.open(workspace.path);
     notifyGitStatusChanged();

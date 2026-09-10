@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { cssVariablesForTheme, fallbackThemeName, isThemeName, themeRegistry, type ThemeName } from "./themes";
 import { getQuickToggleTarget, ThemeContext } from "./ThemeContext";
 import { notify } from "../ui/uiStore";
@@ -49,7 +49,7 @@ export default function ThemeProvider({ children }: Props) {
   const { selectedThemeId, preferredLightThemeId, preferredDarkThemeId } = preferences;
   const theme = themeRegistry[selectedThemeId] ?? themeRegistry[fallbackThemeName];
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme.id;
     root.dataset.appearance = theme.appearanceMode;

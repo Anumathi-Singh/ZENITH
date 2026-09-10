@@ -29,6 +29,7 @@ class WorkspaceIndex extends EventEmitter {
     this.watchTimer = null;
     this.controller = null;
     this.generation = 0;
+    this.openSequence = 0;
     this.watchDebounceMs = options.watchDebounceMs || 220;
   }
 
@@ -38,8 +39,10 @@ class WorkspaceIndex extends EventEmitter {
   excluded(relativePath) { return normalizedRelative(relativePath).split("/").some((part) => this.exclusions.has(part)); }
 
   async open(rootPath) {
+    const sequence = ++this.openSequence;
     const root = await fsp.realpath(path.resolve(rootPath));
     const info = await fsp.stat(root);
+    if (sequence !== this.openSequence) return this.getState();
     if (!info.isDirectory()) throw indexError("The workspace index requires a folder.", "INVALID_WORKSPACE");
     if (this.root !== root) this.entries = [];
     this.root = root;
@@ -75,7 +78,12 @@ class WorkspaceIndex extends EventEmitter {
       if (signal.aborted) throw indexError("Workspace indexing was cancelled.", "INDEX_CANCELLED");
       const directory = directories.pop();
       let children;
-      try { children = await fsp.readdir(directory, { withFileTypes: true }); }
+      try {
+        const real = await fsp.realpath(directory);
+        const relative = path.relative(root, real);
+        if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+        children = await fsp.readdir(real, { withFileTypes: true });
+      }
       catch (error) {
         if (directory === root) throw indexError("Zenith cannot read the selected workspace.", "WORKSPACE_INACCESSIBLE");
         if (["EACCES", "EPERM", "ENOENT"].includes(error?.code)) continue;
@@ -108,6 +116,7 @@ class WorkspaceIndex extends EventEmitter {
 
   stopWatcher() { clearTimeout(this.watchTimer); this.watchTimer = null; this.watcher?.close(); this.watcher = null; }
   close() {
+    this.openSequence += 1;
     this.generation += 1; this.controller?.abort(); this.controller = null; this.stopWatcher();
     this.root = null; this.entries = [];
     this.publish({ status: "idle", rootPath: null, fileCount: 0, version: this.state.version + 1, error: null, watching: false });

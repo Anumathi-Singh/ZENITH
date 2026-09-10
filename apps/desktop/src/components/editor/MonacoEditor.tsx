@@ -1,12 +1,30 @@
 ﻿import { useEffect, useMemo } from "react";
 import { useRef } from "react";
-import Editor from "@monaco-editor/react";
+import Editor, { loader } from "@monaco-editor/react";
+import * as localMonaco from "monaco-editor";
+import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
+import TsWorker from "monaco-editor/language/typescript/ts.worker.js?worker";
+import JsonWorker from "monaco-editor/language/json/json.worker.js?worker";
+import CssWorker from "monaco-editor/language/css/css.worker.js?worker";
+import HtmlWorker from "monaco-editor/language/html/html.worker.js?worker";
 import type * as Monaco from "monaco-editor";
 import { useEditorStore } from "./editorStore";
 import { useTheme } from "../theme/useTheme";
 import { themes } from "../theme/themes";
 import { useEditorPreferences } from "./editorPreferences";
 import { useWorkspaceStore } from "../explorer/workspaceStore";
+
+// Bundle the installed Monaco version and workers; desktop editing must work offline.
+self.MonacoEnvironment = {
+  getWorker(_moduleId, label) {
+    if (label === "typescript" || label === "javascript") return new TsWorker();
+    if (label === "json") return new JsonWorker();
+    if (label === "css" || label === "scss" || label === "less") return new CssWorker();
+    if (label === "html" || label === "handlebars" || label === "razor") return new HtmlWorker();
+    return new EditorWorker();
+  },
+};
+loader.config({ monaco: localMonaco });
 
 function defineZenithThemes(monaco: typeof Monaco) {
   Object.entries(themes).forEach(([name, theme]) => {
@@ -68,6 +86,17 @@ export default function MonacoEditor() {
   }, [selectedThemeId]);
 
   useEffect(() => {
+    const paths = new Set(tabs.map((tab) => tab.path ? localMonaco.Uri.file(tab.path).toString() : tab.id));
+    // Monaco switches the active model in its own effect before this deferred cleanup.
+    const timer = window.setTimeout(() => {
+      localMonaco.editor.getModels().forEach((model) => {
+        if (!paths.has(model.uri.toString()) && editorRef.current?.getModel() !== model) model.dispose();
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [tabs]);
+
+  useEffect(() => {
     const saveHandler = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
@@ -107,7 +136,7 @@ export default function MonacoEditor() {
   return (
     <Editor
       height="100%"
-      path={currentTab.path ?? currentTab.id}
+      path={currentTab.path ? localMonaco.Uri.file(currentTab.path).toString() : currentTab.id}
       language={currentTab.language}
       value={currentTab.content}
       theme={`zenith-${selectedThemeId}`}

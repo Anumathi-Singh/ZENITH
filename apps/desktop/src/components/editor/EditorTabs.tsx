@@ -1,18 +1,14 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import { Check, ChevronsRight, Copy, FileText, FolderOpen, MoreHorizontal, X } from "lucide-react";
 import { useEditorStore } from "./editorStore";
-import { useAppPreferences } from "../settings/appPreferences";
 import { notify } from "../ui/uiStore";
 
 export default function EditorTabs() {
   const { tabs, activeTab, setActiveTab, closeTab, saveTab } = useEditorStore();
-  const confirmClose = useAppPreferences((state) => state.confirmBeforeClosingDirtyFiles);
   const [menuTab, setMenuTab] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => { const close = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenuTab(null); }; window.addEventListener("pointerdown", close); return () => window.removeEventListener("pointerdown", close); }, []);
   const requestClose = (id: string) => {
-    const tab = tabs.find((item) => item.id === id);
-    if (tab?.isDirty && confirmClose && !window.confirm(`Close ${tab.name}? Your unsaved changes will remain only in this session.`)) return;
     closeTab(id);
   };
   const copyPath = async (path?: string) => { if (!path) return notify("This tab is not backed by a workspace file.", "warning"); try { if (window.zenithDesktop?.copyText) await window.zenithDesktop.copyText(path); else await navigator.clipboard.writeText(path); notify("File path copied.", "success"); } catch { notify("Could not copy the file path.", "error"); } };
