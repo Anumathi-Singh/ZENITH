@@ -84,6 +84,16 @@ class GitService {
     return { ...availability, isRepository: true, status: parseGitStatus(result.stdout, repositoryRoot) };
   }
 
+  async aiContext() {
+    const availability = await this.getVersion();
+    if (!availability.available) return { available: false, summary: "Git is unavailable.", diff: "" };
+    const repositoryRoot = await this.repositoryRoot();
+    if (!repositoryRoot) return { available: false, summary: "The workspace is not a Git repository.", diff: "" };
+    const status = await this.run(["status", "--short", "--branch"], { cwd: repositoryRoot, allowFailure: true });
+    const diff = await this.run(["diff", "--no-ext-diff", "--unified=2", "--"], { cwd: repositoryRoot, allowFailure: true });
+    return { available: true, summary: status.stdout.slice(0, 12_000), diff: diff.stdout.slice(0, 40_000) };
+  }
+
   assertRelativePath(candidate, repositoryRoot) {
     if (typeof candidate !== "string" || !candidate || candidate.includes("\0")) throw gitError("A valid repository path is required.", "INVALID_GIT_PATH");
     const absolute = path.resolve(repositoryRoot, candidate);

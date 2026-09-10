@@ -71,4 +71,55 @@ class SecureTokenStore {
   }
 }
 
-module.exports = { SecureTokenStore, storageError };
+class SecureValueStore {
+  constructor(filePath, encryption, label = "credential") {
+    this.filePath = filePath;
+    this.encryption = encryption;
+    this.label = label;
+  }
+
+  isAvailable() {
+    try { return Boolean(this.encryption?.isEncryptionAvailable()); }
+    catch { return false; }
+  }
+
+  requireEncryption() {
+    if (!this.isAvailable()) throw storageError("Secure operating-system credential encryption is unavailable.", "SECURE_STORAGE_UNAVAILABLE");
+  }
+
+  async load() {
+    this.requireEncryption();
+    try {
+      const encrypted = await fs.readFile(this.filePath);
+      const value = this.encryption.decryptString(encrypted);
+      if (!value) throw new Error("Empty credential.");
+      return value;
+    } catch (error) {
+      if (error?.code === "ENOENT") return null;
+      throw storageError(`The saved ${this.label} could not be decrypted.`, "SECURE_STORAGE_CORRUPT");
+    }
+  }
+
+  async save(value) {
+    this.requireEncryption();
+    if (typeof value !== "string" || !value) throw storageError(`A valid ${this.label} is required.`, "INVALID_CREDENTIAL");
+    const directory = path.dirname(this.filePath);
+    const temporary = `${this.filePath}.${process.pid}.tmp`;
+    try {
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(temporary, this.encryption.encryptString(value), { mode: 0o600 });
+      await fs.rename(temporary, this.filePath);
+    } catch (error) {
+      try { await fs.rm(temporary, { force: true }); } catch { /* best-effort cleanup */ }
+      if (error?.code === "SECURE_STORAGE_UNAVAILABLE") throw error;
+      throw storageError(`Zenith could not securely save the ${this.label}.`);
+    }
+  }
+
+  async clear() {
+    try { await fs.rm(this.filePath, { force: true }); }
+    catch { throw storageError(`Zenith could not remove the saved ${this.label}.`); }
+  }
+}
+
+module.exports = { SecureTokenStore, SecureValueStore, storageError };

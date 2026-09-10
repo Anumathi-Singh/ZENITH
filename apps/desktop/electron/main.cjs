@@ -9,7 +9,7 @@ const pty = require("node-pty");
 const { asBackendResult } = require("./services/backend-result.cjs");
 const { GitService } = require("./services/git-service.cjs");
 const { WorkspaceService } = require("./services/workspace-service.cjs");
-const { SecureTokenStore } = require("./services/secure-token-store.cjs");
+const { SecureTokenStore, SecureValueStore } = require("./services/secure-token-store.cjs");
 const { GitHubDeviceAuth } = require("./services/github-device-auth.cjs");
 const { GitHubApiClient } = require("./services/github-api-client.cjs");
 const { AuthService } = require("./services/auth-service.cjs");
@@ -18,6 +18,13 @@ const { GitHubService } = require("./services/github-service.cjs");
 const { loadAppConfig } = require("./services/app-config.cjs");
 const { WorkspaceIndex } = require("./services/workspace-index.cjs");
 const { SearchService } = require("./services/search-service.cjs");
+const { AIConfigService } = require("./services/ai/ai-config-service.cjs");
+const { AIConversationStore } = require("./services/ai/conversation-store.cjs");
+const { AIEditService } = require("./services/ai/edit-service.cjs");
+const { AIOrchestrator } = require("./services/ai/orchestrator.cjs");
+const { ProviderRegistry } = require("./services/ai/provider-registry.cjs");
+const { AIValidationService } = require("./services/ai/validation-service.cjs");
+const { AIWorkspaceTools } = require("./services/ai/workspace-tools.cjs");
 
 const appConfig = loadAppConfig({ appRoot: path.resolve(__dirname, "..") });
 
@@ -28,6 +35,8 @@ const workspaceIndex = new WorkspaceIndex();
 const searchService = new SearchService(workspaceIndex, { onProgress: notifySearchProgress });
 let authService;
 let githubService;
+let aiConfigService;
+let aiOrchestrator;
 const terminals = new Map();
 const ignoredNames = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
 const maxFileBytes = 2 * 1024 * 1024;
@@ -169,6 +178,14 @@ function notifySearchProgress(progress) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:search-progress", progress);
 }
 
+function notifyAIRunEvent(event) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("zenith:ai-run-event", event);
+}
+
+function aiHandler(channel, operation, fallbackCode = "AI_OPERATION_FAILED") {
+  ipcMain.handle(channel, (_event, ...args) => asBackendResult(() => operation(...args), fallbackCode));
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: "Zenith",
@@ -198,18 +215,36 @@ app.whenReady().then(async () => {
     credentialEnvironment: new GitCredentialEnvironment(path.join(app.getPath("userData"), "auth")),
     onProgress: notifyGitHubProgress,
   });
+  const aiDirectory = path.join(app.getPath("userData"), "ai");
+  const providerRegistry = new ProviderRegistry();
+  aiConfigService = new AIConfigService({
+    filePath: path.join(aiDirectory, "settings.json"),
+    keyStore: new SecureValueStore(path.join(aiDirectory, "openai-key.bin"), safeStorage, "OpenAI API key"),
+    registry: providerRegistry,
+  });
+  aiOrchestrator = new AIOrchestrator({
+    workspace: workspaceService,
+    registry: providerRegistry,
+    config: aiConfigService,
+    tools: new AIWorkspaceTools({ workspace: workspaceService, index: workspaceIndex, search: searchService, git: gitService }),
+    edits: new AIEditService(workspaceService),
+    validation: new AIValidationService(workspaceService),
+    conversations: new AIConversationStore(path.join(aiDirectory, "conversations.json")),
+  });
+  aiOrchestrator.on("event", notifyAIRunEvent);
   authService.on("changed", notifyAuthChanged);
   workspaceIndex.on("changed", notifyIndexChanged);
   ipcMain.handle("zenith:select-folder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     if (result.canceled || !result.filePaths[0]) return null;
+    aiOrchestrator.cancelAll("The workspace changed.");
     const workspace = await workspaceService.open(result.filePaths[0]);
     void workspaceIndex.open(workspace.path);
     notifyGitStatusChanged();
     return workspace;
   });
   ipcMain.handle("zenith:read-directory", async (_event, directoryPath) => readDirectory(directoryPath));
-  ipcMain.handle("zenith:close-folder", () => { workspaceService.close(); workspaceIndex.close(); notifyGitStatusChanged(); });
+  ipcMain.handle("zenith:close-folder", () => { aiOrchestrator.cancelAll("The workspace was closed."); workspaceService.close(); workspaceIndex.close(); notifyGitStatusChanged(); });
   ipcMain.handle("zenith:read-file", async (_event, filePath) => {
     const resolved = await workspaceService.assertExistingPath(filePath);
     const info = await fs.stat(resolved);
@@ -311,12 +346,22 @@ app.whenReady().then(async () => {
     const safeUrl = githubService.validateExternalUrl(url);
     await shell.openExternal(safeUrl);
   });
+  aiHandler("zenith:ai-providers", () => providerRegistry.list());
+  aiHandler("zenith:ai-settings", () => aiConfigService.getSettings());
+  aiHandler("zenith:ai-save-provider", (options) => aiConfigService.saveProviderConfig(options));
+  aiHandler("zenith:ai-test-provider", (options) => aiConfigService.testProvider(options));
+  aiHandler("zenith:ai-remove-provider", () => aiConfigService.removeProviderConfig());
+  aiHandler("zenith:ai-start-run", (options) => aiOrchestrator.startRun(options));
+  aiHandler("zenith:ai-cancel-run", (runId) => aiOrchestrator.cancel(runId));
+  aiHandler("zenith:ai-approve-edits", (runId, options) => aiOrchestrator.approve(runId, options));
+  aiHandler("zenith:ai-reject-edits", (runId) => aiOrchestrator.reject(runId));
+  aiHandler("zenith:ai-conversations", () => aiOrchestrator.listConversations());
   createWindow();
   void authService.initialize().then(notifyAuthChanged);
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on("before-quit", () => { clearTimeout(gitRefreshTimer); searchService.dispose(); workspaceIndex.close(); killAllTerminals(); githubService?.cancelClone(); authService?.dispose(); });
+app.on("before-quit", () => { clearTimeout(gitRefreshTimer); aiOrchestrator?.dispose(); searchService.dispose(); workspaceIndex.close(); killAllTerminals(); githubService?.cancelClone(); authService?.dispose(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
 
